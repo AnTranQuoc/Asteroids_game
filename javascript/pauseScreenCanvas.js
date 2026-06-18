@@ -1,57 +1,65 @@
 import { CANVAS, CONTEXT } from "./canvasUtils.js";
 import { score } from "./scoreUtils.js";
 import { OFF_WHITE, TRANSLUCENT } from "./gameConstants.js";
+import { drawButton } from "./ui.js";
+
+export function getPauseButtons() {
+  const cx = CANVAS.width / 2;
+  return [
+    {
+      id: "resume",
+      label: "RESUME",
+      x: cx - 130,
+      y: CANVAS.height / 2 + 40,
+      w: 260,
+      h: 62,
+    },
+    {
+      id: "restart",
+      label: "RESTART",
+      x: cx - 130,
+      y: CANVAS.height / 2 + 115,
+      w: 260,
+      h: 54,
+    },
+    {
+      id: "lobby",
+      label: "BACK TO LOBBY",
+      x: cx - 130,
+      y: CANVAS.height / 2 + 180,
+      w: 260,
+      h: 54,
+    },
+  ];
+}
 
 export function drawPauseMenuInfo() {
+  CONTEXT.textAlign = "left";
   CONTEXT.fillStyle = TRANSLUCENT;
   CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
 
   CONTEXT.fillStyle = OFF_WHITE;
   CONTEXT.font = "30px monospace";
-
   const pausedText = "GAME PAUSED";
   const pausedWidth = CONTEXT.measureText(pausedText).width;
-  const pausedX = (CANVAS.width - pausedWidth) / 2;
-  const pausedY = CANVAS.height / 2 - 70;
-  CONTEXT.fillText(pausedText, pausedX, pausedY);
-
-  const scoreText = `Your score is currently ${score}.`;
-  const scoreWidth = CONTEXT.measureText(scoreText).width;
-  const scoreX = (CANVAS.width - scoreWidth) / 2;
-  const scoreY = CANVAS.height / 2 - 30;
-  CONTEXT.fillText(scoreText, scoreX, scoreY);
+  CONTEXT.fillText(pausedText, (CANVAS.width - pausedWidth) / 2, CANVAS.height / 2 - 70);
 
   CONTEXT.font = "20px monospace";
-  const controlsText =
-    "W - Forwards | A - Rotate Left | S - Backwards | D - Rotate Right";
+  const scoreText = `Your score is currently ${score}.`;
+  const scoreWidth = CONTEXT.measureText(scoreText).width;
+  CONTEXT.fillText(scoreText, (CANVAS.width - scoreWidth) / 2, CANVAS.height / 2 - 30);
+
+  const controlsText = "MOUSE - Aim (auto-fires) | W/A/S/D - Move | ESC - Pause";
   const controlsWidth = CONTEXT.measureText(controlsText).width;
-  const controlsX = (CANVAS.width - controlsWidth) / 2;
-  const controlsY = CANVAS.height / 2 + 160;
-  CONTEXT.fillText(controlsText, controlsX, controlsY);
+  CONTEXT.fillText(controlsText, (CANVAS.width - controlsWidth) / 2, CANVAS.height / 2 - 5);
 
-  const resumeText = "Press the LEFT MOUSE BUTTON to resume playing.";
-  const resumeWidth = CONTEXT.measureText(resumeText).width;
-  const resumeX = (CANVAS.width - resumeWidth) / 2;
-  const resumeY = CANVAS.height / 2 + 125;
-  CONTEXT.fillText(resumeText, resumeX, resumeY);
-
-  CONTEXT.font = "14px monospace";
-  const scoreGuideText =
-    "Note: Smaller asteroids are worth more than larger ones. Will you risk it?";
-  const scoreGuideWidth = CONTEXT.measureText(scoreGuideText).width;
-  const scoreGuideX = (CANVAS.width - scoreGuideWidth) / 2;
-  const scoreGuideY = CANVAS.height / 2 + 190;
-  CONTEXT.fillText(scoreGuideText, scoreGuideX, scoreGuideY);
-
-  const musicText = "Music by Karl Casey. (Royalty-Free)";
-  const musicWidth = CONTEXT.measureText(musicText).width;
-  const musicX = (CANVAS.width - musicWidth) / 2;
-  const musicY = CANVAS.height / 2 + 430;
-  CONTEXT.fillText(musicText, musicX, musicY);
-
-  const musicWebsiteText = "karlcasey.bandcamp.com";
-  const musicWebsiteWidth = CONTEXT.measureText(musicWebsiteText).width;
-  const musicWebsiteX = (CANVAS.width - musicWebsiteWidth) / 2;
-  const musicWebsiteY = CANVAS.height / 2 + 450;
-  CONTEXT.fillText(musicWebsiteText, musicWebsiteX, musicWebsiteY);
+  for (const btn of getPauseButtons()) {
+    if (btn.id === "resume") {
+      drawButton(btn, { color: "120, 230, 160", font: "26px monospace" });
+    } else if (btn.id === "restart") {
+      drawButton(btn, { color: "255, 170, 60", font: "22px monospace" });
+    } else {
+      drawButton(btn, { color: "160, 160, 175", font: "22px monospace" });
+    }
+  }
 }

@@ -3,14 +3,35 @@ import * as Music from "./javascript/sfxAndMusic.js"; // Don't remove. Disables 
 import { CANVAS, CONTEXT } from "./javascript/canvasUtils.js";
 import { drawFPS, calculateFPS } from "./javascript/fpsUtils.js";
 import { scoreBoard } from "./javascript/scoreUtils.js";
-import { drawStartScreenInfo } from "./javascript/startScreenCanvas.js";
-import { drawRestartScreenInfo } from "./javascript/restartScreenCanvas.js";
-import { drawPauseMenuInfo } from "./javascript/pauseScreenCanvas.js";
-import { resetScore, increaseScore } from "./javascript/scoreUtils.js";
+import { drawStartScreenInfo, getStartButtons } from "./javascript/startScreenCanvas.js";
+import { drawRestartScreenInfo, getRestartButtons } from "./javascript/restartScreenCanvas.js";
+import { drawPauseMenuInfo, getPauseButtons } from "./javascript/pauseScreenCanvas.js";
+import { isInside } from "./javascript/ui.js";
+import { resetScore, increaseScore, score } from "./javascript/scoreUtils.js";
+import { drawShopScreen, getShopButtons } from "./javascript/shopScreen.js";
+import { buySkin, selectSkin, isOwned } from "./javascript/skins.js";
+import { addMoney, setLastEarned } from "./javascript/money.js";
 import { controlScheme } from "./javascript/controlScheme.js";
 import { enableCanvasWrap } from "./javascript/canvasWrap.js";
 import { player, Projectile } from "./javascript/classes/gameClasses.js";
-import { spawnAsteroids } from "./javascript/asteroidUtils.js";
+import { spawnAsteroids, splitAsteroid } from "./javascript/asteroidUtils.js";
+import { drawStarfield } from "./javascript/starfield.js";
+import {
+  getDifficulty,
+  setDifficulty,
+  DIFFICULTY_ORDER,
+  runtime,
+  updateSpeedRamp,
+  resetSpeedRamp,
+} from "./javascript/difficulty.js";
+import {
+  POWERUPS,
+  PowerUp,
+  POWERUP_TYPES,
+  POWERUP_DURATION,
+  randomPowerUpType,
+  drawIcon,
+} from "./javascript/powerUps.js";
 import {
   renderParticles,
   updateParticles,
@@ -22,35 +43,63 @@ import {
   EXPLOSIONS,
   PROJECTILE_SPEED,
   KEYPRESS,
+  MOUSE,
   GREY,
-  SPAWN_INTERVAL,
 } from "./javascript/gameConstants.js";
 
 export let gameOver = false;
 export let gameStarted = false;
 export let isPaused = false;
-let asteroidSpawnInterval;
+let lastSpawnTime = 0;
+let gameStartTime = 0; // When the current run began (for the speed ramp).
+let shopOpen = false; // Overlay shop, reachable from start / game-over screens.
+let runBanked = false; // Guards against paying out the same run twice.
+
+// Start the aim point at the centre so the ship has a sane facing before the
+// first mouse movement.
+MOUSE.x = CANVAS.width / 2;
+MOUSE.y = CANVAS.height / 2;
 
 ///// Asteroid Management /////
-function updateAndDrawAsteroids() {
-  // Create a new array containing filtered asteroids.
-  const updatedAsteroids = ASTEROIDS.filter((asteroid) => {
-    asteroid.updateAsteroid();
-    if (playerCollided(asteroid, player.getVertices())) {
-      gameOver = true;
-    }
-    return (
-      asteroid.coordinates.x >= 0 &&
-      asteroid.coordinates.x <= CANVAS.width &&
-      asteroid.coordinates.y >= 0 &&
-      asteroid.coordinates.y <= CANVAS.height
-    );
+// Spawns a size-scaled ember explosion at the given spot.
+function spawnExplosion(coordinates, radius) {
+  EXPLOSIONS.push({
+    coordinates: { x: coordinates.x, y: coordinates.y },
+    particles: [],
+    maxParticles: Math.min(60, Math.floor(radius * 0.8) + 14),
+    particleSpeed: 2 + radius / 40,
+    particleRadius: 1 + radius / 70,
+    particleColor: "255, 180, 70", // Warm ember tone.
+    explosionDuration: 35,
+    frameCount: 0,
   });
+}
 
-  // Assign the new array back to the imported ASTEROIDS array.
-  ASTEROIDS.length = 0; // Clear the original array.
-  Array.prototype.push.apply(ASTEROIDS, updatedAsteroids); // Copy the filtered asteroids.
-  // console.log(ASTEROIDS);
+function updateAndDrawAsteroids() {
+  // Asteroids wrap around the screen (handled in updateAsteroid), so there's no
+  // need to cull them by position — just update, draw, and check for a hit.
+  const now = performance.now();
+  for (let i = ASTEROIDS.length - 1; i >= 0; i--) {
+    const asteroid = ASTEROIDS[i];
+    asteroid.updateAsteroid();
+
+    if (playerCollided(asteroid, player.getVertices())) {
+      if (now < player.invulnUntil) {
+        continue; // Grace period right after a shield breaks.
+      }
+      if (player.shield) {
+        // Shield soaks the hit: pop the rock and grant brief invulnerability.
+        player.shield = false;
+        player.invulnUntil = now + 1500;
+        spawnExplosion(asteroid.coordinates, asteroid.radius);
+        soundManager.playSound("ASTEROID_HIT", 0.15);
+        ASTEROIDS.splice(i, 1);
+      } else {
+        gameOver = true;
+        bankRun();
+      }
+    }
+  }
 }
 ///// End of Asteroid Management /////
 
@@ -86,18 +135,28 @@ function detectCollisions() {
         // Remove detected projectiles and asteroids that have collided.
         PROJECTILES.splice(i, 1);
         ASTEROIDS.splice(j, 1);
-        // Explosion visual effect.
-        const explosion = {
-          coordinates: { x: ASTEROID.coordinates.x, y: ASTEROID.coordinates.y },
-          particles: [],
-          maxParticles: 20,
-          particleSpeed: 2,
-          particleRadius: 0.75,
-          explosionDuration: 30, // Duration of the explosion in frames
-          frameCount: 0,
-        };
-        EXPLOSIONS.push(explosion);
+
+        // Large asteroids break into smaller, faster shards.
+        const shards = splitAsteroid(ASTEROID);
+        Array.prototype.push.apply(ASTEROIDS, shards);
+
+        // Explosion visual effect, scaled to the asteroid's size.
+        spawnExplosion(ASTEROID.coordinates, ASTEROID.radius);
         soundManager.playSound("ASTEROID_HIT", 0.1);
+
+        // Chance to drop a power-up the player can fly over to "eat".
+        if (Math.random() < getDifficulty().dropChance) {
+          POWERUPS.push(
+            new PowerUp({
+              coordinates: {
+                x: ASTEROID.coordinates.x,
+                y: ASTEROID.coordinates.y,
+              },
+              type: randomPowerUpType(),
+            })
+          );
+        }
+        break; // This projectile is gone; stop scanning asteroids for it.
       }
     }
   }
@@ -150,42 +209,102 @@ function isPointOnLineSegment(x, y, start, end) {
 ///// End of Hit Detection /////
 
 ///// Main Game Loop /////
-function restartGame() {
-  gameOver = false;
-  resetScore();
+function resetPlayerState() {
   player.coordinates.x = CANVAS.width / 2;
   player.coordinates.y = CANVAS.height / 2;
   player.velocity.x = 0;
   player.velocity.y = 0;
+  player.rapidFireUntil = 0;
+  player.spreadUntil = 0;
+  player.shield = false;
+  player.invulnUntil = 0;
+}
+
+// Pays out money for the current run (once). Earn $1 per 10 points.
+function bankRun() {
+  if (runBanked) return;
+  const earned = Math.floor(score / 10);
+  addMoney(earned);
+  setLastEarned(earned);
+  runBanked = true;
+}
+
+// These only flip state; the render loop runs continuously and picks it up.
+function startGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+  runBanked = false;
+  lastFrameTime = performance.now();
+  lastSpawnTime = performance.now();
+  gameStartTime = performance.now();
+  resetSpeedRamp();
+}
+
+function restartGame() {
+  bankRun(); // Cash in the run being abandoned (no-op if already banked).
+  gameOver = false;
+  isPaused = false;
+  runBanked = false;
+  resetScore();
+  resetPlayerState();
   ASTEROIDS.length = 0;
   PROJECTILES.length = 0;
-  CANVAS.removeEventListener("click", restartGame);
-  gameLoop();
+  POWERUPS.length = 0;
+  lastFrameTime = performance.now();
+  lastSpawnTime = performance.now();
+  gameStartTime = performance.now();
+  resetSpeedRamp();
+}
+
+function togglePause() {
+  if (!gameStarted || gameOver) return;
+  isPaused = !isPaused;
+  if (!isPaused) {
+    lastFrameTime = performance.now(); // Avoid a big delta jump on resume.
+  }
+}
+
+// Abandon the current run and return to the start screen (lobby).
+function goToLobby() {
+  bankRun(); // Cash in the run being abandoned.
+  gameStarted = false;
+  gameOver = false;
+  isPaused = false;
+  resetScore();
+  resetPlayerState();
+  ASTEROIDS.length = 0;
+  PROJECTILES.length = 0;
+  POWERUPS.length = 0;
 }
 
 function resumeGame() {
-  isPaused = false;
+  if (isPaused) togglePause();
 }
 
 let lastFrameTime = 0;
 
 function gameLoop(currentTime) {
+  if (shopOpen) {
+    // Shop overlay (reachable from the start and game-over screens).
+    CANVAS.style.cursor = "default";
+    drawShopScreen();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
   if (!gameStarted) {
-    // Start screen.
+    // Start screen — keep animating so button hover updates.
+    CANVAS.style.cursor = "default";
     drawStartScreenInfo();
-    CANVAS.addEventListener("click", () => {
-      gameStarted = true;
-      lastFrameTime = performance.now();
-      clearInterval(asteroidSpawnInterval);
-      requestAnimationFrame(gameLoop);
-    });
+    requestAnimationFrame(gameLoop);
     return;
   }
 
   if (gameOver) {
-    // What do you think?
+    // Game-over screen.
+    CANVAS.style.cursor = "default";
     drawRestartScreenInfo();
-    CANVAS.addEventListener("click", restartGame);
+    requestAnimationFrame(gameLoop);
     return;
   }
 
@@ -198,6 +317,7 @@ function gameLoop(currentTime) {
   */
 
   if (!isPaused & !gameOver) {
+    CANVAS.style.cursor = "crosshair";
     const DELTA_TIME = (currentTime - lastFrameTime) / 1000;
     const targetTimePerFrame = 1 / MAX_FPS;
 
@@ -216,10 +336,19 @@ function gameLoop(currentTime) {
     CONTEXT.fillStyle = GREY;
     CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
 
+    // Twinkling starfield behind the action.
+    drawStarfield();
+
     player.updatePlayer();
 
-    // Asteroid spawning.
-    asteroidSpawnInterval = setInterval(spawnAsteroids, SPAWN_INTERVAL);
+    // Ramp asteroid speed up the longer this run lasts.
+    updateSpeedRamp(currentTime - gameStartTime);
+
+    // Asteroid spawning (time-based; interval set by difficulty).
+    if (currentTime - lastSpawnTime >= getDifficulty().spawnInterval) {
+      spawnAsteroids();
+      lastSpawnTime = currentTime;
+    }
 
     // Asteroid maintenance.
     updateAndDrawAsteroids();
@@ -272,54 +401,234 @@ function gameLoop(currentTime) {
       projectile.updateProjectile();
     }
 
-    // Garbage collector for projectiles that traveled past the max distance.
-    if (PROJECTILES.distanceTraveled >= PROJECTILES.maxDistance) {
-      PROJECTILES.splice(i, 1);
+    // Power-ups: draw, age out, and let the player "eat" them on contact.
+    updateAndCollectPowerUps(currentTime);
+
+    // The gun fires automatically (much faster with Rapid Fire active).
+    const fireInterval = currentTime < player.rapidFireUntil ? 70 : 220;
+    if (currentTime - lastShotTime >= fireInterval) {
+      fireProjectile();
+      lastShotTime = currentTime;
     }
+
+    // Active power-up / difficulty HUD.
+    drawHud(currentTime);
 
     // FPS COUNTER
     calculateFPS(currentTime);
     drawFPS();
     requestAnimationFrame(gameLoop);
   } else {
-    // What do you think?
+    // Paused — keep animating so the Resume button hover updates.
+    CANVAS.style.cursor = "default";
     drawPauseMenuInfo();
-    CANVAS.addEventListener("click", resumeGame);
+    requestAnimationFrame(gameLoop);
     return;
   }
 }
 gameLoop();
 
+///// Power-ups /////
+function applyPowerUp(type, now) {
+  if (type === "rapid") {
+    player.rapidFireUntil = now + POWERUP_DURATION;
+  } else if (type === "spread") {
+    player.spreadUntil = now + POWERUP_DURATION;
+  } else if (type === "shield") {
+    player.shield = true;
+  }
+}
+
+function updateAndCollectPowerUps(now) {
+  for (let i = POWERUPS.length - 1; i >= 0; i--) {
+    const p = POWERUPS[i];
+    p.update();
+
+    const dx = p.coordinates.x - player.coordinates.x;
+    const dy = p.coordinates.y - player.coordinates.y;
+    if (Math.hypot(dx, dy) < p.radius + 24) {
+      applyPowerUp(p.type, now);
+      POWERUPS.splice(i, 1);
+      soundManager.playSound("FIRE_SOUND", 0.25);
+      continue;
+    }
+
+    if (p.life <= 0) {
+      POWERUPS.splice(i, 1);
+    }
+  }
+}
+
+// Draws an energy gauge (icon + depleting bar) for one power-up.
+function drawEnergyBar(x, y, type, fraction, color) {
+  const barW = 150;
+  const barH = 12;
+  const iconBox = 24;
+  const clamped = Math.max(0, Math.min(1, fraction));
+
+  CONTEXT.save();
+
+  // Icon to the left of the bar.
+  CONTEXT.translate(x + iconBox / 2, y + barH / 2);
+  CONTEXT.scale(0.75, 0.75);
+  drawIcon(type, color);
+  CONTEXT.restore();
+
+  const bx = x + iconBox + 6;
+  const by = y;
+
+  // Track.
+  CONTEXT.fillStyle = "rgba(255, 255, 255, 0.12)";
+  CONTEXT.fillRect(bx, by, barW, barH);
+
+  // Energy fill (glowing).
+  CONTEXT.save();
+  CONTEXT.fillStyle = color;
+  CONTEXT.shadowColor = color;
+  CONTEXT.shadowBlur = 8;
+  CONTEXT.fillRect(bx, by, barW * clamped, barH);
+  CONTEXT.restore();
+
+  // Border.
+  CONTEXT.strokeStyle = color;
+  CONTEXT.lineWidth = 1;
+  CONTEXT.strokeRect(bx, by, barW, barH);
+}
+
+function drawHud(now) {
+  CONTEXT.save();
+  CONTEXT.textAlign = "left";
+  CONTEXT.textBaseline = "alphabetic";
+  CONTEXT.font = "14px monospace";
+
+  const x = 14;
+  let y = 45; // Below the FPS counter.
+
+  CONTEXT.fillStyle = "rgb(170, 170, 185)";
+  CONTEXT.fillText(
+    `MODE: ${getDifficulty().label}   SPEED x${runtime.speedRamp.toFixed(1)}`,
+    x,
+    y
+  );
+  y += 16;
+
+  // Energy gauges for whatever power-ups are active.
+  if (now < player.rapidFireUntil) {
+    drawEnergyBar(
+      x,
+      y,
+      "rapid",
+      (player.rapidFireUntil - now) / POWERUP_DURATION,
+      POWERUP_TYPES.rapid.color
+    );
+    y += 22;
+  }
+  if (now < player.spreadUntil) {
+    drawEnergyBar(
+      x,
+      y,
+      "spread",
+      (player.spreadUntil - now) / POWERUP_DURATION,
+      POWERUP_TYPES.spread.color
+    );
+    y += 22;
+  }
+  if (player.shield) {
+    // Shield is a one-hit charge, so its gauge stays full while held.
+    drawEnergyBar(x, y, "shield", 1, POWERUP_TYPES.shield.color);
+  }
+
+  CONTEXT.restore();
+}
+
 ///// Controls /////
+let lastShotTime = 0;
+
 function fireProjectile() {
   soundManager.playSound("FIRE_SOUND", 0.1);
 
-  const cosRotation = Math.cos(player.rotation);
-  const sinRotation = Math.sin(player.rotation);
+  // Spread Shot fires a 3-way fan; otherwise a single bolt.
+  const spread = performance.now() < player.spreadUntil;
+  const angleOffsets = spread ? [-0.18, 0, 0.18] : [0];
 
-  PROJECTILES.push(
-    new Projectile({
-      coordinates: {
-        x: player.coordinates.x + cosRotation * 45,
-        y: player.coordinates.y + sinRotation * 45,
-      },
-      velocity: {
-        x: PROJECTILE_SPEED * cosRotation,
-        y: PROJECTILE_SPEED * sinRotation,
-      },
-    })
-  );
+  for (const offset of angleOffsets) {
+    const rotation = player.rotation + offset;
+    const cosRotation = Math.cos(rotation);
+    const sinRotation = Math.sin(rotation);
+
+    PROJECTILES.push(
+      new Projectile({
+        coordinates: {
+          x: player.coordinates.x + cosRotation * 45,
+          y: player.coordinates.y + sinRotation * 45,
+        },
+        velocity: {
+          x: PROJECTILE_SPEED * cosRotation,
+          y: PROJECTILE_SPEED * sinRotation,
+        },
+      })
+    );
+  }
 }
 
+// Track the mouse so the ship can aim at it.
+window.addEventListener("mousemove", (e) => {
+  const rect = CANVAS.getBoundingClientRect();
+  MOUSE.x = e.clientX - rect.left;
+  MOUSE.y = e.clientY - rect.top;
+});
+
+// Left click only interacts with on-screen buttons (the gun is automatic).
 window.addEventListener("mousedown", (e) => {
-  if (gameStarted && !gameOver && !isPaused && e.button === 0) {
-    fireProjectile();
+  if (e.button !== 0) return;
+
+  const rect = CANVAS.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // Shop overlay takes priority while open.
+  if (shopOpen) {
+    for (const btn of getShopButtons()) {
+      if (!isInside(mx, my, btn)) continue;
+      if (btn.id === "back") {
+        shopOpen = false;
+      } else if (btn.id === "skin") {
+        // Equip if owned, otherwise try to buy (which also equips).
+        if (isOwned(btn.category, btn.skinId)) selectSkin(btn.category, btn.skinId);
+        else buySkin(btn.category, btn.skinId);
+      }
+      return;
+    }
+    return;
+  }
+
+  let buttons = [];
+  if (!gameStarted) buttons = getStartButtons();
+  else if (gameOver) buttons = getRestartButtons();
+  else if (isPaused) buttons = getPauseButtons();
+  else return; // Playing: clicks do nothing.
+
+  for (const btn of buttons) {
+    if (!isInside(mx, my, btn)) continue;
+    if (btn.id === "difficulty") setDifficulty(btn.key);
+    else if (btn.id === "start") startGame();
+    else if (btn.id === "restart") restartGame();
+    else if (btn.id === "resume") resumeGame();
+    else if (btn.id === "lobby") goToLobby();
+    else if (btn.id === "shop") shopOpen = true;
+    return;
   }
 });
 
 window.addEventListener("keydown", (e) => {
+  // Optional shortcut: pick difficulty with number keys on the menus.
+  if (/^Digit[1-4]$/.test(e.code) && (!gameStarted || gameOver)) {
+    setDifficulty(DIFFICULTY_ORDER[Number(e.code.slice(-1)) - 1]);
+    return;
+  }
+
   if (e.code === "Escape" && gameStarted && !gameOver) {
-    isPaused = !isPaused;
+    togglePause();
   } else if (gameStarted) {
     switch (e.code) {
       case "KeyW":
