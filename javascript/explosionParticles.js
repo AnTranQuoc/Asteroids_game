@@ -28,7 +28,7 @@ export function renderParticles(explosion) {
         Math.PI * 2
       );
       CONTEXT.closePath();
-      CONTEXT.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      CONTEXT.fillStyle = `rgba(${particle.color || "255, 255, 255"}, ${alpha})`;
       CONTEXT.fill();
     }
     

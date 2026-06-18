@@ -1,32 +1,77 @@
 import { Asteroid } from "./classes/gameClasses.js";
-import { MAX_ASTEROIDS } from "./gameConstants.js";
 import { gameOver, gameStarted } from "../index.js";
-import { ASTEROIDS } from "./gameConstants.js";
 import { CANVAS } from "./canvasUtils.js";
+import { getDifficulty, runtime } from "./difficulty.js";
+import {
+  ASTEROIDS,
+  ASTEROID_MIN_RADIUS,
+  ASTEROID_MAX_RADIUS,
+  ASTEROID_SPLIT_THRESHOLD,
+} from "./gameConstants.js";
 
 export function getAsteroidSpawnData() {
-  // Spawn location of asteroids (outside of canvas bounds).
-  const randomX = Math.random() < 0.5 ? -50 : CANVAS.width + 50;
-  const randomY = Math.random() < 0.5 ? -50 : CANVAS.height + 50;
+  // Spawn location of asteroids (just outside the canvas bounds).
+  const randomX = Math.random() < 0.5 ? -60 : CANVAS.width + 60;
+  const randomY = Math.random() < 0.5 ? -60 : CANVAS.height + 60;
   return { x: randomX, y: randomY };
 }
 
-export function getRandomAsteroidVelocity() {
-  const randomVelocityX = (Math.random() - 0.5) * 9;
-  const randomVelocityY = (Math.random() - 0.5) * 9;
-  return { x: randomVelocityX, y: randomVelocityY };
+// Aim each asteroid at a random point roughly around the centre so it actually
+// crosses the screen, and scale speed by size (smaller rocks fly faster).
+export function getAimedAsteroidVelocity(spawn, radius) {
+  const targetX = CANVAS.width / 2 + (Math.random() - 0.5) * CANVAS.width * 0.6;
+  const targetY = CANVAS.height / 2 + (Math.random() - 0.5) * CANVAS.height * 0.6;
+
+  const angle = Math.atan2(targetY - spawn.y, targetX - spawn.x);
+  const sizeFactor = Math.min(2.4, Math.max(0.6, 42 / radius));
+  const speed =
+    (1.8 + Math.random() * 1.8) *
+    sizeFactor *
+    getDifficulty().speedMult *
+    runtime.speedRamp;
+
+  return { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
 }
 
 export function spawnAsteroids() {
-  if (gameStarted && !gameOver && ASTEROIDS.length < MAX_ASTEROIDS) {
+  if (gameStarted && !gameOver && ASTEROIDS.length < getDifficulty().maxAsteroids) {
     const spawnLocation = getAsteroidSpawnData();
-    const asteroidVelocity = getRandomAsteroidVelocity();
+    const radius =
+      ASTEROID_MIN_RADIUS +
+      Math.random() * (ASTEROID_MAX_RADIUS - ASTEROID_MIN_RADIUS);
+    const asteroidVelocity = getAimedAsteroidVelocity(spawnLocation, radius);
 
     ASTEROIDS.push(
       new Asteroid({
         coordinates: spawnLocation,
         velocity: asteroidVelocity,
+        radius,
       })
     );
   }
+}
+
+// Classic Asteroids mechanic: a large rock breaks into smaller, faster shards
+// when shot. Small rocks are simply destroyed (returns an empty array).
+export function splitAsteroid(asteroid) {
+  const children = [];
+  if (asteroid.radius > ASTEROID_SPLIT_THRESHOLD) {
+    const childRadius = asteroid.radius * 0.56;
+    const baseAngle = Math.atan2(asteroid.velocity.y, asteroid.velocity.x);
+
+    for (let i = 0; i < 2; i++) {
+      // Send shards out to either side of the parent's travel direction.
+      const angle = baseAngle + (i === 0 ? 1 : -1) * (0.6 + Math.random() * 0.5);
+      const speed =
+        (2.5 + Math.random() * 3) * getDifficulty().speedMult * runtime.speedRamp;
+      children.push(
+        new Asteroid({
+          coordinates: { x: asteroid.coordinates.x, y: asteroid.coordinates.y },
+          velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
+          radius: childRadius,
+        })
+      );
+    }
+  }
+  return children;
 }
