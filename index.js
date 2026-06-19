@@ -20,6 +20,7 @@ import {
 import { getPlayerName, setPlayerName } from "./javascript/leaderboard.js";
 import { drawNameScreen, getNameButtons } from "./javascript/nameScreen.js";
 import { drawMyRecordsScreen, getMyRecordsButtons } from "./javascript/myRecordsScreen.js";
+import { gameConfirm, gamePrompt, gameAlert, dialogOpen } from "./javascript/dialog.js";
 import { controlScheme } from "./javascript/controlScheme.js";
 import { enableCanvasWrap } from "./javascript/canvasWrap.js";
 import { player, Projectile } from "./javascript/classes/gameClasses.js";
@@ -351,11 +352,11 @@ const RENAME_COST = 6000;
 // costs money (enforced by the server). Re-asks if the name is taken.
 async function enterName() {
   const paid = !!getPlayerName(); // already have a name => this is a paid rename
-  if (paid && !window.confirm(`Changing your name costs $${RENAME_COST}. Continue?`)) {
+  if (paid && !(await gameConfirm(`Changing your name costs $${RENAME_COST}. Continue?`))) {
     return;
   }
 
-  let entered = window.prompt(
+  let entered = await gamePrompt(
     paid ? `Enter your new name ($${RENAME_COST}):` : "Enter your pilot name:",
     getPlayerName()
   );
@@ -367,11 +368,11 @@ async function enterName() {
       return;
     }
     if (/taken|duplicate/i.test(res.error || "")) {
-      entered = window.prompt("That name is already taken. Pick another:", entered);
+      entered = await gamePrompt("That name is already taken. Pick another:", entered);
       continue;
     }
     if (/insufficient|funds/i.test(res.error || "")) {
-      window.alert(`Not enough money — you need $${RENAME_COST} to change your name.`);
+      await gameAlert(`Not enough money — you need $${RENAME_COST} to change your name.`);
       return;
     }
     // First-time naming while offline/backend-not-ready: accept locally so the
@@ -381,7 +382,7 @@ async function enterName() {
       localStorage.setItem("nameChosen", "1");
       needsName = false;
     } else {
-      window.alert("Couldn't change your name right now. Try again later.");
+      await gameAlert("Couldn't change your name right now. Try again later.");
     }
     return;
   }
@@ -764,6 +765,7 @@ window.addEventListener("mousemove", (e) => {
 // Left click only interacts with on-screen buttons (the gun is automatic).
 window.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
+  if (dialogOpen()) return; // A modal dialog is handling input.
 
   const rect = CANVAS.getBoundingClientRect();
   const mx = e.clientX - rect.left;
@@ -838,6 +840,8 @@ window.addEventListener("mousedown", (e) => {
 });
 
 window.addEventListener("keydown", (e) => {
+  if (dialogOpen()) return; // Let the modal dialog handle typing.
+
   // Optional shortcut: pick difficulty with number keys on the menus.
   if (/^Digit[1-4]$/.test(e.code) && (!gameStarted || gameOver)) {
     setDifficulty(DIFFICULTY_ORDER[Number(e.code.slice(-1)) - 1]);
