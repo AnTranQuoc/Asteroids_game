@@ -11,7 +11,7 @@ import { resetScore, increaseScore, score } from "./javascript/scoreUtils.js";
 import { drawShopScreen, getShopButtons } from "./javascript/shopScreen.js";
 import { buyOrEquipSkin } from "./javascript/skins.js";
 import { setLastEarned } from "./javascript/money.js";
-import { initCloud, cloudSubmitRun } from "./javascript/cloud.js";
+import { initCloud, cloudSubmitRun, cloud } from "./javascript/cloud.js";
 import {
   drawLeaderboardScreen,
   getLeaderboardButtons,
@@ -351,7 +351,9 @@ const RENAME_COST = 6000;
 // Prompts for a pilot name. The first name is free; renaming an existing one
 // costs money (enforced by the server). Re-asks if the name is taken.
 async function enterName() {
-  const paid = !!getPlayerName(); // already have a name => this is a paid rename
+  // Charge only if the SERVER already has a name for this account (matches what
+  // the server actually does). The first real name is free.
+  const paid = !!cloud.name;
   if (paid && !(await gameConfirm(`Changing your name costs $${RENAME_COST}. Continue?`))) {
     return;
   }
