@@ -345,6 +345,55 @@ function resumeGame() {
   if (isPaused) togglePause();
 }
 
+const RENAME_COST = 6000;
+
+// Prompts for a pilot name. The first name is free; renaming an existing one
+// costs money (enforced by the server). Re-asks if the name is taken.
+async function enterName() {
+  const paid = !!getPlayerName(); // already have a name => this is a paid rename
+  if (paid && !window.confirm(`Changing your name costs $${RENAME_COST}. Continue?`)) {
+    return;
+  }
+
+  let entered = window.prompt(
+    paid ? `Enter your new name ($${RENAME_COST}):` : "Enter your pilot name:",
+    getPlayerName()
+  );
+  while (entered !== null && entered.trim()) {
+    const res = await setPlayerName(entered);
+    if (res.ok) {
+      localStorage.setItem("nameChosen", "1");
+      needsName = false;
+      return;
+    }
+    if (/taken|duplicate/i.test(res.error || "")) {
+      entered = window.prompt("That name is already taken. Pick another:", entered);
+      continue;
+    }
+    if (/insufficient|funds/i.test(res.error || "")) {
+      window.alert(`Not enough money — you need $${RENAME_COST} to change your name.`);
+      return;
+    }
+    // First-time naming while offline/backend-not-ready: accept locally so the
+    // player isn't blocked. (Paid renames require the server, so don't.)
+    if (!paid) {
+      localStorage.setItem("playerName", entered.trim().slice(0, 16));
+      localStorage.setItem("nameChosen", "1");
+      needsName = false;
+    } else {
+      window.alert("Couldn't change your name right now. Try again later.");
+    }
+    return;
+  }
+}
+
+// Play without a unique name (shows as "Anonymous" on the world board).
+function playUnknown() {
+  localStorage.removeItem("playerName");
+  localStorage.setItem("nameChosen", "1");
+  needsName = false;
+}
+
 // Renders the frozen battlefield with the ship's explosion, then gradually
 // fades the game-over screen in on top.
 function drawDeathSequence(now) {
@@ -753,16 +802,9 @@ window.addEventListener("mousedown", (e) => {
     for (const btn of getNameButtons()) {
       if (!isInside(mx, my, btn)) continue;
       if (btn.id === "enter-name") {
-        const entered = window.prompt("Enter your pilot name:", getPlayerName());
-        if (entered !== null && entered.trim()) {
-          setPlayerName(entered);
-          localStorage.setItem("nameChosen", "1");
-          needsName = false;
-        }
+        enterName();
       } else if (btn.id === "play-unknown") {
-        setPlayerName("Unknown");
-        localStorage.setItem("nameChosen", "1");
-        needsName = false;
+        playUnknown();
       }
       return;
     }
@@ -789,8 +831,7 @@ window.addEventListener("mousedown", (e) => {
     } else if (btn.id === "myrecords") {
       myRecordsOpen = true;
     } else if (btn.id === "name") {
-      const entered = window.prompt("Enter your pilot name:", getPlayerName());
-      if (entered !== null) setPlayerName(entered);
+      enterName();
     }
     return;
   }

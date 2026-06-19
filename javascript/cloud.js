@@ -100,12 +100,15 @@ export async function cloudSubmitRun(score, mode) {
   applyProfile(data);
 }
 
+// Returns { ok: true } or { ok: false, error: "<message>" } so the UI can tell
+// the player when a name is already taken.
 export async function cloudSetName(name) {
-  if (!cloud.online) return;
+  if (!cloud.online) return { ok: false, error: "offline" };
   const { data, error } = await supabase.rpc("set_player_name", { p_name: name });
   if (error) {
     console.warn("set_player_name failed:", error.message);
-    return;
+    return { ok: false, error: error.message || "error" };
   }
   applyProfile(data);
+  return { ok: true };
 }

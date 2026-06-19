@@ -59,13 +59,13 @@ export function drawLeaderboardScreen() {
     CONTEXT.font = "18px monospace";
     CONTEXT.fillStyle = "rgb(225, 150, 150)";
     CONTEXT.fillText(
-      "Leaderboard isn't set up yet.",
+      "Couldn't reach the leaderboard service.",
       cx,
       CANVAS.height / 2 - 12
     );
     CONTEXT.fillStyle = "rgb(160, 160, 170)";
     CONTEXT.fillText(
-      "Add your Supabase keys in javascript/leaderboard.js",
+      "Check your connection and try again.",
       cx,
       CANVAS.height / 2 + 16
     );
