@@ -1,25 +1,11 @@
-// Persistent in-game currency. Earned at the end of each run and spent in the
-// skin shop.
-const MONEY_KEY = "money";
+import { cloud } from "./cloud.js";
 
-let money = parseInt(localStorage.getItem(MONEY_KEY)) || 0;
-let lastEarned = 0; // How much the most recent run paid out (for the UI).
+// Money is owned by the server now (see cloud.js). This module just exposes the
+// current balance plus the "earned this run" figure for the game-over screen.
+let lastEarned = 0;
 
 export function getMoney() {
-  return money;
-}
-
-export function addMoney(amount) {
-  money += amount;
-  localStorage.setItem(MONEY_KEY, money);
-}
-
-// Returns true if the player could afford it (and the money was deducted).
-export function spendMoney(amount) {
-  if (money < amount) return false;
-  money -= amount;
-  localStorage.setItem(MONEY_KEY, money);
-  return true;
+  return cloud.money;
 }
 
 export function setLastEarned(amount) {

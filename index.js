@@ -9,8 +9,17 @@ import { drawPauseMenuInfo, getPauseButtons } from "./javascript/pauseScreenCanv
 import { isInside } from "./javascript/ui.js";
 import { resetScore, increaseScore, score } from "./javascript/scoreUtils.js";
 import { drawShopScreen, getShopButtons } from "./javascript/shopScreen.js";
-import { buySkin, selectSkin, isOwned } from "./javascript/skins.js";
-import { addMoney, setLastEarned } from "./javascript/money.js";
+import { buyOrEquipSkin } from "./javascript/skins.js";
+import { setLastEarned } from "./javascript/money.js";
+import { initCloud, cloudSubmitRun } from "./javascript/cloud.js";
+import {
+  drawLeaderboardScreen,
+  getLeaderboardButtons,
+  openLeaderboard,
+} from "./javascript/leaderboardScreen.js";
+import { getPlayerName, setPlayerName } from "./javascript/leaderboard.js";
+import { drawNameScreen, getNameButtons } from "./javascript/nameScreen.js";
+import { drawMyRecordsScreen, getMyRecordsButtons } from "./javascript/myRecordsScreen.js";
 import { controlScheme } from "./javascript/controlScheme.js";
 import { enableCanvasWrap } from "./javascript/canvasWrap.js";
 import { player, Projectile } from "./javascript/classes/gameClasses.js";
@@ -55,6 +64,9 @@ let lastSpawnTime = 0;
 let gameStartTime = 0; // When the current run began (for the speed ramp).
 let deathTime = 0; // When the player died (for the death/fade sequence).
 let shopOpen = false; // Overlay shop, reachable from start / game-over screens.
+let leaderboardOpen = false; // World-records overlay.
+let myRecordsOpen = false; // Personal records overlay.
+let needsName = !localStorage.getItem("nameChosen"); // First-launch name gate.
 let runBanked = false; // Guards against paying out the same run twice.
 
 // Start the aim point at the centre so the ship has a sane facing before the
@@ -274,9 +286,10 @@ function resetPlayerState() {
 // Pays out money for the current run (once). Earn $1 per 10 points.
 function bankRun() {
   if (runBanked) return;
-  const earned = Math.floor(score / 10);
-  addMoney(earned);
-  setLastEarned(earned);
+  // The server grants the money and updates the best score; we just show the
+  // expected payout immediately for feedback.
+  setLastEarned(Math.floor(score / 10));
+  cloudSubmitRun(score, getDifficulty().label);
   runBanked = true;
 }
 
@@ -366,6 +379,30 @@ function gameLoop(currentTime) {
     // Shop overlay (reachable from the start and game-over screens).
     CANVAS.style.cursor = "default";
     drawShopScreen();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  if (leaderboardOpen) {
+    // World-records overlay.
+    CANVAS.style.cursor = "default";
+    drawLeaderboardScreen();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  if (myRecordsOpen) {
+    // Personal records overlay.
+    CANVAS.style.cursor = "default";
+    drawMyRecordsScreen();
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  if (needsName) {
+    // First-launch: ask for a pilot name before anything else.
+    CANVAS.style.cursor = "default";
+    drawNameScreen();
     requestAnimationFrame(gameLoop);
     return;
   }
@@ -477,6 +514,9 @@ function gameLoop(currentTime) {
     return;
   }
 }
+
+// Sign in + load the cloud profile (money / skins / scores), then start.
+initCloud();
 gameLoop();
 
 ///// Power-ups /////
@@ -680,16 +720,49 @@ window.addEventListener("mousedown", (e) => {
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
 
-  // Shop overlay takes priority while open.
+  // Overlays take priority while open.
   if (shopOpen) {
     for (const btn of getShopButtons()) {
       if (!isInside(mx, my, btn)) continue;
       if (btn.id === "back") {
         shopOpen = false;
       } else if (btn.id === "skin") {
-        // Equip if owned, otherwise try to buy (which also equips).
-        if (isOwned(btn.category, btn.skinId)) selectSkin(btn.category, btn.skinId);
-        else buySkin(btn.category, btn.skinId);
+        // Server buys (or equips, if owned) and validates funds.
+        buyOrEquipSkin(btn.category, btn.skinId);
+      }
+      return;
+    }
+    return;
+  }
+
+  if (leaderboardOpen) {
+    for (const btn of getLeaderboardButtons()) {
+      if (isInside(mx, my, btn) && btn.id === "lb-back") leaderboardOpen = false;
+    }
+    return;
+  }
+
+  if (myRecordsOpen) {
+    for (const btn of getMyRecordsButtons()) {
+      if (isInside(mx, my, btn) && btn.id === "mr-back") myRecordsOpen = false;
+    }
+    return;
+  }
+
+  if (needsName) {
+    for (const btn of getNameButtons()) {
+      if (!isInside(mx, my, btn)) continue;
+      if (btn.id === "enter-name") {
+        const entered = window.prompt("Enter your pilot name:", getPlayerName());
+        if (entered !== null && entered.trim()) {
+          setPlayerName(entered);
+          localStorage.setItem("nameChosen", "1");
+          needsName = false;
+        }
+      } else if (btn.id === "play-unknown") {
+        setPlayerName("Unknown");
+        localStorage.setItem("nameChosen", "1");
+        needsName = false;
       }
       return;
     }
@@ -710,6 +783,15 @@ window.addEventListener("mousedown", (e) => {
     else if (btn.id === "resume") resumeGame();
     else if (btn.id === "lobby") goToLobby();
     else if (btn.id === "shop") shopOpen = true;
+    else if (btn.id === "leaderboard") {
+      leaderboardOpen = true;
+      openLeaderboard();
+    } else if (btn.id === "myrecords") {
+      myRecordsOpen = true;
+    } else if (btn.id === "name") {
+      const entered = window.prompt("Enter your pilot name:", getPlayerName());
+      if (entered !== null) setPlayerName(entered);
+    }
     return;
   }
 });

@@ -3,6 +3,7 @@ import { OFF_WHITE, GREY } from "./gameConstants.js";
 import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyState } from "./difficulty.js";
 import { getSelectedShipSkin, getSelectedGunSkin } from "./skins.js";
 import { getMoney } from "./money.js";
+import { getPlayerName } from "./leaderboard.js";
 import { drawButton } from "./ui.js";
 
 // Shared layout so drawing and click hit-testing use the exact same rects.
@@ -39,14 +40,13 @@ export function getStartButtons() {
     h: 62,
   });
 
-  buttons.push({
-    id: "shop",
-    label: "SHOP",
-    x: cx - 110,
-    y: rowY + 165,
-    w: 220,
-    h: 50,
-  });
+  // Secondary buttons in a 2x2 grid.
+  const colL = cx - 230;
+  const colR = cx + 10;
+  buttons.push({ id: "shop", label: "SHOP", x: colL, y: rowY + 165, w: 220, h: 50 });
+  buttons.push({ id: "leaderboard", label: "WORLD RECORDS", x: colR, y: rowY + 165, w: 220, h: 50 });
+  buttons.push({ id: "myrecords", label: "MY RECORDS", x: colL, y: rowY + 225, w: 220, h: 50 });
+  buttons.push({ id: "name", label: "CHANGE NAME", x: colR, y: rowY + 225, w: 220, h: 50 });
 
   return buttons;
 }
@@ -90,17 +90,19 @@ export function drawStartScreenInfo() {
   CONTEXT.font = "18px monospace";
   CONTEXT.fillStyle = OFF_WHITE;
   const loadoutText = `${ship.name}  /  ${gun.name}`;
-  CONTEXT.fillText(loadoutText, cx - CONTEXT.measureText(loadoutText).width / 2, cy - 20);
+  CONTEXT.fillText(loadoutText, cx - CONTEXT.measureText(loadoutText).width / 2, cy - 22);
 
-  // Controls + power-up hint.
+  // Pilot name (used on the world-records board).
+  CONTEXT.font = "14px monospace";
+  CONTEXT.fillStyle = "rgb(150, 150, 160)";
+  const pilotText = `PILOT: ${getPlayerName() || "unnamed"}`;
+  CONTEXT.fillText(pilotText, cx - CONTEXT.measureText(pilotText).width / 2, cy - 2);
+
+  // Controls hint.
   CONTEXT.font = "18px monospace";
   CONTEXT.fillStyle = OFF_WHITE;
   const controlsText = "MOUSE - Aim (auto-fires) | W/A/S/D - Move | ESC - Pause";
-  CONTEXT.fillText(controlsText, cx - CONTEXT.measureText(controlsText).width / 2, cy + 8);
-
-  CONTEXT.font = "14px monospace";
-  const powerText = "Shoot rocks to drop power-ups — fly over them to grab: Rapid Fire, Spread Shot, Shield.";
-  CONTEXT.fillText(powerText, cx - CONTEXT.measureText(powerText).width / 2, cy + 30);
+  CONTEXT.fillText(controlsText, cx - CONTEXT.measureText(controlsText).width / 2, cy + 24);
 
   // Buttons.
   for (const btn of getStartButtons()) {
@@ -112,13 +114,14 @@ export function drawStartScreenInfo() {
       });
     } else if (btn.id === "start") {
       drawButton(btn, { color: "120, 230, 160", font: "26px monospace" });
+    } else if (btn.id === "shop") {
+      drawButton(btn, { color: "255, 215, 80", font: "20px monospace" });
+    } else if (btn.id === "leaderboard") {
+      drawButton(btn, { color: "120, 200, 255", font: "16px monospace" });
+    } else if (btn.id === "myrecords") {
+      drawButton(btn, { color: "190, 160, 255", font: "18px monospace" });
     } else {
-      drawButton(btn, { color: "255, 215, 80" });
+      drawButton(btn, { color: "160, 160, 175", font: "18px monospace" });
     }
   }
-
-  CONTEXT.font = "14px monospace";
-  CONTEXT.fillStyle = OFF_WHITE;
-  const musicText = "Music by Karl Casey. (Royalty-Free) — karlcasey.bandcamp.com";
-  CONTEXT.fillText(musicText, cx - CONTEXT.measureText(musicText).width / 2, cy + 290);
 }

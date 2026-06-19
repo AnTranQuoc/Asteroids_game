@@ -1,4 +1,4 @@
-import { spendMoney } from "./money.js";
+import { cloud, cloudPurchaseSkin } from "./cloud.js";
 
 ///// Ship hull designs (drawn in local space, nose pointing toward +x) /////
 function drawClassicShip(ctx) {
@@ -364,60 +364,23 @@ export const GUN_SKINS = [
 
 const CATALOG = { ship: SHIP_SKINS, gun: GUN_SKINS };
 
-const OWNED_KEY = "ownedSkins";
-const SELECTED_KEY = "selectedSkins";
-
-function load(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-// Free skins are always owned.
-const owned = load(OWNED_KEY, { ship: ["classic"], gun: ["standard"] });
-if (!owned.ship.includes("classic")) owned.ship.push("classic");
-if (!owned.gun.includes("standard")) owned.gun.push("standard");
-
-const selected = load(SELECTED_KEY, { ship: "classic", gun: "standard" });
-
-function save() {
-  localStorage.setItem(OWNED_KEY, JSON.stringify(owned));
-  localStorage.setItem(SELECTED_KEY, JSON.stringify(selected));
-}
-
+// Ownership and selection are read from the (server-authoritative) cloud mirror.
 export function isOwned(category, id) {
-  return owned[category].includes(id);
+  return (cloud.owned[category] || []).includes(id);
 }
 
 export function isSelected(category, id) {
-  return selected[category] === id;
+  return cloud.selected[category] === id;
 }
 
-export function selectSkin(category, id) {
-  if (isOwned(category, id)) {
-    selected[category] = id;
-    save();
-  }
-}
-
-// Attempts to buy a skin: returns true on success, false if unaffordable.
-// Buying also equips it.
-export function buySkin(category, id) {
-  if (isOwned(category, id)) return true;
-  const skin = CATALOG[category].find((s) => s.id === id);
-  if (!skin) return false;
-  if (!spendMoney(skin.price)) return false;
-  owned[category].push(id);
-  selected[category] = id;
-  save();
-  return true;
+// Buys (or equips, if already owned) a skin via the server. Async; the cloud
+// mirror updates on success and the UI re-reads it next frame.
+export function buyOrEquipSkin(category, id) {
+  return cloudPurchaseSkin(category, id);
 }
 
 export function getSelectedSkin(category) {
-  const id = selected[category];
+  const id = cloud.selected[category];
   return CATALOG[category].find((s) => s.id === id) || CATALOG[category][0];
 }
 
