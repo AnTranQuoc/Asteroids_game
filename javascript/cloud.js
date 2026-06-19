@@ -99,9 +99,10 @@ async function ensureSignedIn() {
   }
 }
 
-// Buys (or, if already owned, equips) a skin. Server validates price + funds.
+// Buys (or, if already owned, equips) a skin. Requires a named account —
+// anonymous players can't own/save skins.
 export async function cloudPurchaseSkin(category, id) {
-  if (!(await ensureSignedIn())) return false;
+  if (!cloud.online) return false;
   const { data, error } = await supabase.rpc("purchase_skin", {
     p_category: category,
     p_skin_id: id,
@@ -114,10 +115,10 @@ export async function cloudPurchaseSkin(category, id) {
   return true;
 }
 
-// Submits a finished run. Server grants the money and updates the best score.
+// Submits a finished run. Only named players save scores/money; anonymous
+// players just play (nothing is recorded).
 export async function cloudSubmitRun(score, mode) {
-  if (score <= 0) return;
-  if (!(await ensureSignedIn())) return;
+  if (!cloud.online || score <= 0) return;
   const { data, error } = await supabase.rpc("submit_run", {
     p_score: Math.floor(score),
     p_mode: mode,

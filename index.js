@@ -780,8 +780,12 @@ window.addEventListener("mousedown", (e) => {
       if (btn.id === "back") {
         shopOpen = false;
       } else if (btn.id === "skin") {
-        // Server buys (or equips, if owned) and validates funds.
-        buyOrEquipSkin(btn.category, btn.skinId);
+        if (!cloud.online) {
+          gameAlert("Set a pilot name (CHANGE NAME) to buy skins and save your progress.");
+        } else {
+          // Server buys (or equips, if owned) and validates funds.
+          buyOrEquipSkin(btn.category, btn.skinId);
+        }
       }
       return;
     }
