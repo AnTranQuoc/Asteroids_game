@@ -4,56 +4,68 @@ import { SHIP_SKINS, GUN_SKINS, isOwned, isSelected } from "./skins.js";
 import { getMoney } from "./money.js";
 import { drawButton, isInside } from "./ui.js";
 
+// Each category is a single centred row; tile width shrinks to fit the screen.
+const MARGIN = 30;
+const GAP = 12;
+const MAX_BW = 165;
+const BH = 84;
+const SHIP_TOP = 160;
+
 function skinList(category) {
   return category === "ship" ? SHIP_SKINS : GUN_SKINS;
 }
 
-// Shared layout for drawing and click hit-testing.
+function gunTop() {
+  return SHIP_TOP + BH + 60;
+}
+
+// Tile width that lets the longest row fit on screen (capped for big screens).
+function tileWidth() {
+  const n = Math.max(SHIP_SKINS.length, GUN_SKINS.length);
+  const available = CANVAS.width - MARGIN * 2;
+  return Math.min(MAX_BW, (available - (n - 1) * GAP) / n);
+}
+
+// Greedily wraps a name into at most two lines that fit `maxWidth`.
+function wrapName(name, maxWidth) {
+  const words = name.split(" ");
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (!current || CONTEXT.measureText(test).width <= maxWidth) {
+      current = test;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, 2);
+}
+
+function layoutCategory(skins, category, topY, bw) {
+  const total = skins.length * bw + (skins.length - 1) * GAP;
+  const startX = (CANVAS.width - total) / 2;
+  return skins.map((s, i) => ({
+    id: "skin",
+    category,
+    skinId: s.id,
+    x: startX + i * (bw + GAP),
+    y: topY,
+    w: bw,
+    h: BH,
+  }));
+}
+
 export function getShopButtons() {
-  const buttons = [];
-  const cols = 5;
-  const bw = 150;
-  const bh = 80;
-  const gap = 16;
-  const totalW = bw * cols + gap * (cols - 1);
-  const startX = (CANVAS.width - totalW) / 2;
-
-  const shipY = CANVAS.height / 2 - 120;
-  SHIP_SKINS.forEach((s, i) => {
-    buttons.push({
-      id: "skin",
-      category: "ship",
-      skinId: s.id,
-      x: startX + i * (bw + gap),
-      y: shipY,
-      w: bw,
-      h: bh,
-    });
-  });
-
-  const gunY = CANVAS.height / 2 + 50;
-  GUN_SKINS.forEach((s, i) => {
-    buttons.push({
-      id: "skin",
-      category: "gun",
-      skinId: s.id,
-      x: startX + i * (bw + gap),
-      y: gunY,
-      w: bw,
-      h: bh,
-    });
-  });
-
-  buttons.push({
-    id: "back",
-    label: "BACK",
-    x: CANVAS.width / 2 - 110,
-    y: CANVAS.height / 2 + 175,
-    w: 220,
-    h: 54,
-  });
-
-  return buttons;
+  const bw = tileWidth();
+  const backY = gunTop() + BH + 30;
+  return [
+    ...layoutCategory(SHIP_SKINS, "ship", SHIP_TOP, bw),
+    ...layoutCategory(GUN_SKINS, "gun", gunTop(), bw),
+    { id: "back", label: "BACK", x: CANVAS.width / 2 - 110, y: backY, w: 220, h: 54 },
+  ];
 }
 
 function drawSkinTile(btn, skin) {
@@ -69,6 +81,8 @@ function drawSkinTile(btn, skin) {
   else if (affordable) accent = "200, 200, 210";
   else accent = "200, 90, 90";
 
+  const cx = btn.x + btn.w / 2;
+
   CONTEXT.save();
 
   // Tile background + border.
@@ -83,24 +97,29 @@ function drawSkinTile(btn, skin) {
   CONTEXT.strokeStyle = `rgb(${accent})`;
   CONTEXT.strokeRect(btn.x, btn.y, btn.w, btn.h);
 
-  // Live preview of the actual design, rotated to point upward.
+  // Live preview (top, pointing up).
   CONTEXT.save();
-  CONTEXT.translate(btn.x + 30, btn.y + 42);
+  CONTEXT.translate(cx, btn.y + 26);
   CONTEXT.rotate(-Math.PI / 2);
-  const previewScale = btn.category === "ship" ? 0.6 : 1.7;
+  const previewScale = btn.category === "ship" ? 0.62 : 1.7;
   CONTEXT.scale(previewScale, previewScale);
   skin.draw(CONTEXT);
   CONTEXT.restore();
 
-  // Name.
-  CONTEXT.textAlign = "left";
+  // Name (centred, wraps to a second line if needed).
+  CONTEXT.textAlign = "center";
   CONTEXT.textBaseline = "alphabetic";
   CONTEXT.fillStyle = "rgb(230, 230, 235)";
-  CONTEXT.font = "13px monospace";
-  CONTEXT.fillText(skin.name, btn.x + 54, btn.y + 28);
+  CONTEXT.font = "12px monospace";
+  const nameLines = wrapName(skin.name, btn.w - 12);
+  let ny = btn.y + (nameLines.length > 1 ? 47 : 52);
+  for (const line of nameLines) {
+    CONTEXT.fillText(line, cx, ny);
+    ny += 13;
+  }
 
-  // Status line.
-  CONTEXT.font = "14px monospace";
+  // Status (price / OWNED / EQUIPPED).
+  CONTEXT.font = "13px monospace";
   let status;
   if (selected) {
     status = "EQUIPPED";
@@ -112,7 +131,7 @@ function drawSkinTile(btn, skin) {
     status = `$${skin.price}`;
     CONTEXT.fillStyle = affordable ? "rgb(210, 210, 215)" : "rgb(225, 120, 120)";
   }
-  CONTEXT.fillText(status, btn.x + 54, btn.y + 52);
+  CONTEXT.fillText(status, cx, btn.y + 76);
 
   CONTEXT.restore();
 }
@@ -122,27 +141,29 @@ export function drawShopScreen() {
   CONTEXT.fillStyle = GREY;
   CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
 
+  const cx = CANVAS.width / 2;
+
   // Title.
   CONTEXT.fillStyle = OFF_WHITE;
-  CONTEXT.font = "80px monospace";
+  CONTEXT.font = "64px monospace";
   const title = "SHOP";
-  CONTEXT.fillText(title, (CANVAS.width - CONTEXT.measureText(title).width) / 2, CANVAS.height / 2 - 200);
+  CONTEXT.fillText(title, cx - CONTEXT.measureText(title).width / 2, 64);
 
   // Money balance.
-  CONTEXT.font = "26px monospace";
+  CONTEXT.font = "24px monospace";
   CONTEXT.fillStyle = "rgb(255, 215, 80)";
   const money = `MONEY: $${getMoney()}`;
-  CONTEXT.fillText(money, (CANVAS.width - CONTEXT.measureText(money).width) / 2, CANVAS.height / 2 - 150);
+  CONTEXT.fillText(money, cx - CONTEXT.measureText(money).width / 2, 104);
 
-  // Section labels (aligned to the left edge of the tile grid).
-  const buttons = getShopButtons();
-  const gridLeft = buttons[0].x;
+  // Section headers.
   CONTEXT.font = "20px monospace";
   CONTEXT.fillStyle = "rgb(180, 180, 190)";
-  CONTEXT.fillText("SPACESHIP SKINS", gridLeft, CANVAS.height / 2 - 132);
-  CONTEXT.fillText("GUN SKINS", gridLeft, CANVAS.height / 2 + 38);
+  const shipHdr = "SPACESHIP SKINS";
+  CONTEXT.fillText(shipHdr, cx - CONTEXT.measureText(shipHdr).width / 2, SHIP_TOP - 14);
+  const gunHdr = "GUN SKINS";
+  CONTEXT.fillText(gunHdr, cx - CONTEXT.measureText(gunHdr).width / 2, gunTop() - 14);
 
-  for (const btn of buttons) {
+  for (const btn of getShopButtons()) {
     if (btn.id === "skin") {
       const skin = skinList(btn.category).find((s) => s.id === btn.skinId);
       drawSkinTile(btn, skin);

@@ -18,14 +18,14 @@ export const DIFFICULTIES = {
   },
   hard: {
     label: "HARD",
-    speedMult: 1.4,
+    speedMult: 1.3,
     spawnInterval: 480,
     maxAsteroids: 48,
     dropChance: 0.16,
   },
   crazy: {
     label: "CRAZY",
-    speedMult: 2.0,
+    speedMult: 1.6,
     spawnInterval: 300,
     maxAsteroids: 65,
     dropChance: 0.11,
@@ -48,11 +48,12 @@ export function setDifficulty(key) {
 }
 
 // Runtime ramp: asteroids get faster the longer the player survives.
+export const SPEED_RAMP_MAX = 1.8;
 export const runtime = { speedRamp: 1 };
 
 export function updateSpeedRamp(elapsedMs) {
-  // +2% per second, capped at 2.5x (reached after ~75s).
-  runtime.speedRamp = Math.min(2.5, 1 + (elapsedMs / 1000) * 0.02);
+  // +1.5% per second, capped (reached after ~53s).
+  runtime.speedRamp = Math.min(SPEED_RAMP_MAX, 1 + (elapsedMs / 1000) * 0.015);
 }
 
 export function resetSpeedRamp() {

@@ -23,6 +23,7 @@ import {
   runtime,
   updateSpeedRamp,
   resetSpeedRamp,
+  SPEED_RAMP_MAX,
 } from "./javascript/difficulty.js";
 import {
   POWERUPS,
@@ -52,6 +53,7 @@ export let gameStarted = false;
 export let isPaused = false;
 let lastSpawnTime = 0;
 let gameStartTime = 0; // When the current run began (for the speed ramp).
+let deathTime = 0; // When the player died (for the death/fade sequence).
 let shopOpen = false; // Overlay shop, reachable from start / game-over screens.
 let runBanked = false; // Guards against paying out the same run twice.
 
@@ -75,6 +77,38 @@ function spawnExplosion(coordinates, radius) {
   });
 }
 
+// Advances and renders every active explosion.
+function updateAndDrawExplosions() {
+  for (let i = EXPLOSIONS.length - 1; i >= 0; i--) {
+    const explosion = EXPLOSIONS[i];
+
+    if (explosion.frameCount === 0) {
+      const particlesToAdd = explosion.maxParticles - explosion.particles.length;
+      for (let j = 0; j < particlesToAdd; j++) {
+        const angle = Math.random() * Math.PI * 2;
+        const velocity = {
+          x: Math.cos(angle) * explosion.particleSpeed,
+          y: Math.sin(angle) * explosion.particleSpeed,
+        };
+        explosion.particles.push({
+          coordinates: { ...explosion.coordinates },
+          velocity,
+          radius: explosion.particleRadius,
+          color: explosion.particleColor,
+          alpha: 1,
+        });
+      }
+    }
+
+    updateParticles(explosion);
+    explosion.frameCount++;
+    if (explosion.frameCount >= explosion.explosionDuration) {
+      EXPLOSIONS.splice(i, 1);
+    }
+    renderParticles(explosion);
+  }
+}
+
 function updateAndDrawAsteroids() {
   // Asteroids wrap around the screen (handled in updateAsteroid), so there's no
   // need to cull them by position — just update, draw, and check for a hit.
@@ -94,12 +128,29 @@ function updateAndDrawAsteroids() {
         spawnExplosion(asteroid.coordinates, asteroid.radius);
         soundManager.playSound("ASTEROID_HIT", 0.15);
         ASTEROIDS.splice(i, 1);
-      } else {
+      } else if (!gameOver) {
         gameOver = true;
         bankRun();
+        triggerDeath(asteroid);
       }
     }
   }
+}
+
+// Fires once when the ship is destroyed: blow up the ship at its position.
+function triggerDeath() {
+  deathTime = performance.now();
+  EXPLOSIONS.push({
+    coordinates: { x: player.coordinates.x, y: player.coordinates.y },
+    particles: [],
+    maxParticles: 80,
+    particleSpeed: 5,
+    particleRadius: 2.4,
+    particleColor: "255, 160, 80",
+    explosionDuration: 55,
+    frameCount: 0,
+  });
+  soundManager.playSound("ASTEROID_HIT", 0.3);
 }
 ///// End of Asteroid Management /////
 
@@ -281,6 +332,33 @@ function resumeGame() {
   if (isPaused) togglePause();
 }
 
+// Renders the frozen battlefield with the ship's explosion, then gradually
+// fades the game-over screen in on top.
+function drawDeathSequence(now) {
+  const elapsed = now - deathTime;
+
+  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
+  CONTEXT.fillStyle = GREY;
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  drawStarfield();
+
+  // Asteroids stay put (drawn, not moved) while the scene settles.
+  for (const asteroid of ASTEROIDS) asteroid.drawAsteroid();
+
+  updateAndDrawExplosions();
+
+  // Fade the game-over screen in once the blast has had a moment to play.
+  const FADE_DELAY = 600;
+  const FADE_DURATION = 700;
+  if (elapsed > FADE_DELAY) {
+    const alpha = Math.min(1, (elapsed - FADE_DELAY) / FADE_DURATION);
+    CONTEXT.save();
+    CONTEXT.globalAlpha = alpha;
+    drawRestartScreenInfo();
+    CONTEXT.restore();
+  }
+}
+
 let lastFrameTime = 0;
 
 function gameLoop(currentTime) {
@@ -301,9 +379,9 @@ function gameLoop(currentTime) {
   }
 
   if (gameOver) {
-    // Game-over screen.
+    // Death sequence: blow up the ship, then fade in the game-over screen.
     CANVAS.style.cursor = "default";
-    drawRestartScreenInfo();
+    drawDeathSequence(performance.now());
     requestAnimationFrame(gameLoop);
     return;
   }
@@ -364,37 +442,7 @@ function gameLoop(currentTime) {
     enableCanvasWrap();
 
     // Update and show explosions on projectile to asteroid impact.
-    for (let i = EXPLOSIONS.length - 1; i >= 0; i--) {
-      const explosion = EXPLOSIONS[i];
-
-      if (explosion.frameCount === 0) {
-        const particlesToAdd =
-          explosion.maxParticles - explosion.particles.length;
-        for (let j = 0; j < particlesToAdd; j++) {
-          const angle = Math.random() * Math.PI * 2;
-          const velocity = {
-            x: Math.cos(angle) * explosion.particleSpeed,
-            y: Math.sin(angle) * explosion.particleSpeed,
-          };
-          explosion.particles.push({
-            coordinates: { ...explosion.coordinates },
-            velocity,
-            radius: explosion.particleRadius,
-            color: explosion.particleColor,
-            alpha: 1,
-          });
-        }
-      }
-
-      updateParticles(explosion);
-
-      explosion.frameCount++;
-
-      if (explosion.frameCount >= explosion.explosionDuration) {
-        EXPLOSIONS.splice(i, 1);
-      }
-      renderParticles(explosion);
-    }
+    updateAndDrawExplosions();
 
     for (let i = PROJECTILES.length - 1; i >= 0; i--) {
       const projectile = PROJECTILES[i];
@@ -413,6 +461,9 @@ function gameLoop(currentTime) {
 
     // Active power-up / difficulty HUD.
     drawHud(currentTime);
+
+    // Prominent speed gauge (centred under the score).
+    drawSpeedIndicator();
 
     // FPS COUNTER
     calculateFPS(currentTime);
@@ -505,11 +556,7 @@ function drawHud(now) {
   let y = 45; // Below the FPS counter.
 
   CONTEXT.fillStyle = "rgb(170, 170, 185)";
-  CONTEXT.fillText(
-    `MODE: ${getDifficulty().label}   SPEED x${runtime.speedRamp.toFixed(1)}`,
-    x,
-    y
-  );
+  CONTEXT.fillText(`MODE: ${getDifficulty().label}`, x, y);
   y += 16;
 
   // Energy gauges for whatever power-ups are active.
@@ -536,6 +583,53 @@ function drawHud(now) {
   if (player.shield) {
     // Shield is a one-hit charge, so its gauge stays full while held.
     drawEnergyBar(x, y, "shield", 1, POWERUP_TYPES.shield.color);
+  }
+
+  CONTEXT.restore();
+}
+
+// Big, centred speed gauge so the player can see the run getting faster.
+function drawSpeedIndicator() {
+  const ramp = runtime.speedRamp;
+  const t = Math.min(1, (ramp - 1) / (SPEED_RAMP_MAX - 1)); // 0 (start) .. 1 (max)
+
+  // Colour shifts green -> red as speed climbs.
+  const r = Math.round(120 + t * (255 - 120));
+  const g = Math.round(230 + t * (80 - 230));
+  const b = Math.round(160 + t * (80 - 160));
+  const color = `rgb(${r}, ${g}, ${b})`;
+
+  const cx = CANVAS.width / 2;
+  const y = 84;
+
+  CONTEXT.save();
+  CONTEXT.textAlign = "center";
+  CONTEXT.textBaseline = "alphabetic";
+
+  CONTEXT.font = "bold 22px monospace";
+  CONTEXT.fillStyle = color;
+  CONTEXT.shadowColor = color;
+  CONTEXT.shadowBlur = 8 * t;
+  CONTEXT.fillText(`SPEED x${ramp.toFixed(2)}`, cx, y);
+  CONTEXT.shadowBlur = 0;
+
+  // Progress-to-max bar.
+  const barW = 180;
+  const barH = 8;
+  const bx = cx - barW / 2;
+  const by = y + 9;
+  CONTEXT.fillStyle = "rgba(255, 255, 255, 0.12)";
+  CONTEXT.fillRect(bx, by, barW, barH);
+  CONTEXT.fillStyle = color;
+  CONTEXT.fillRect(bx, by, barW * t, barH);
+  CONTEXT.strokeStyle = "rgba(255, 255, 255, 0.25)";
+  CONTEXT.lineWidth = 1;
+  CONTEXT.strokeRect(bx, by, barW, barH);
+
+  if (t >= 1) {
+    CONTEXT.fillStyle = color;
+    CONTEXT.font = "12px monospace";
+    CONTEXT.fillText("MAX SPEED", cx, by + barH + 14);
   }
 
   CONTEXT.restore();

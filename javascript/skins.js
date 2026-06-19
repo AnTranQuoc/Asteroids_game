@@ -134,6 +134,93 @@ function drawVoidShip(ctx) {
   ctx.fill();
 }
 
+function drawAzureShip(ctx) {
+  // Forward-swept blue interceptor.
+  ctx.shadowColor = "rgba(80, 160, 255, 0.9)";
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = "rgb(60, 140, 235)";
+  ctx.beginPath();
+  ctx.moveTo(32, 0);
+  ctx.lineTo(-6, -9);
+  ctx.lineTo(4, -18);
+  ctx.lineTo(-4, -6);
+  ctx.lineTo(-8, 0);
+  ctx.lineTo(-4, 6);
+  ctx.lineTo(4, 18);
+  ctx.lineTo(-6, 9);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgb(205, 230, 255)";
+  ctx.beginPath();
+  ctx.arc(8, 0, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawInfernoShip(ctx) {
+  // Flame-tailed dark fighter.
+  ctx.shadowColor = "rgba(255, 120, 30, 0.9)";
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = "rgb(255, 140, 40)";
+  ctx.beginPath();
+  ctx.moveTo(-2, -6);
+  ctx.lineTo(-18, -12);
+  ctx.lineTo(-8, -3);
+  ctx.closePath();
+  ctx.moveTo(-2, 6);
+  ctx.lineTo(-18, 12);
+  ctx.lineTo(-8, 3);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowColor = "rgba(255, 80, 30, 0.9)";
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = "rgb(62, 32, 32)";
+  ctx.beginPath();
+  ctx.moveTo(32, 0);
+  ctx.lineTo(-6, -11);
+  ctx.lineTo(-2, 0);
+  ctx.lineTo(-6, 11);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgb(255, 140, 50)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = "rgb(255, 210, 150)";
+  ctx.beginPath();
+  ctx.arc(9, 0, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSpectreShip(ctx) {
+  // Thin, translucent ghost ship.
+  ctx.shadowColor = "rgba(230, 240, 255, 0.9)";
+  ctx.shadowBlur = 16;
+  ctx.globalAlpha = 0.88;
+  ctx.fillStyle = "rgb(212, 222, 238)";
+  ctx.beginPath();
+  ctx.moveTo(34, 0);
+  ctx.lineTo(-10, -8);
+  ctx.lineTo(-4, 0);
+  ctx.lineTo(-10, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgb(180, 200, 230)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-4, -3);
+  ctx.lineTo(-12, -12);
+  ctx.moveTo(-4, 3);
+  ctx.lineTo(-12, 12);
+  ctx.stroke();
+}
+
 ///// Gun bolt designs (drawn in local space, travelling toward +x) /////
 function drawStandardShot(ctx) {
   ctx.shadowColor = "rgba(120, 230, 255, 1)";
@@ -198,21 +285,81 @@ function drawRubyShot(ctx) {
   ctx.fill();
 }
 
+function drawFrostShot(ctx) {
+  // Icy crystal shard.
+  ctx.shadowColor = "rgba(150, 220, 255, 1)";
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = "rgb(190, 235, 255)";
+  ctx.beginPath();
+  ctx.moveTo(6, 0);
+  ctx.lineTo(0, 2.5);
+  ctx.lineTo(-4, 0);
+  ctx.lineTo(0, -2.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(225, 245, 255, 0.85)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-3, 0);
+  ctx.lineTo(7, 0);
+  ctx.moveTo(2, -3);
+  ctx.lineTo(2, 3);
+  ctx.stroke();
+}
+
+function drawVenomShot(ctx) {
+  // Twin green orbs.
+  ctx.shadowColor = "rgba(120, 255, 120, 1)";
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = "rgb(140, 255, 140)";
+  ctx.beginPath();
+  ctx.arc(2, 0, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(120, 255, 120, 0.7)";
+  ctx.beginPath();
+  ctx.arc(-4, 0, 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSolarShot(ctx) {
+  // Radiant star.
+  ctx.shadowColor = "rgba(255, 225, 80, 1)";
+  ctx.shadowBlur = 16;
+  ctx.fillStyle = "rgb(255, 230, 120)";
+  ctx.beginPath();
+  ctx.arc(0, 0, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgb(255, 235, 150)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-5, 0);
+  ctx.lineTo(5, 0);
+  ctx.moveTo(0, -5);
+  ctx.lineTo(0, 5);
+  ctx.stroke();
+}
+
 // `color` is the accent used for the shop tile border/label.
 export const SHIP_SKINS = [
   { id: "classic", name: "Classic", price: 0, color: "rgb(225, 225, 230)", draw: drawClassicShip },
-  { id: "crimson", name: "Crimson Raptor", price: 150, color: "rgb(214, 44, 44)", draw: drawCrimsonShip },
-  { id: "emerald", name: "Emerald Wasp", price: 200, color: "rgb(54, 200, 110)", draw: drawEmeraldShip },
-  { id: "gold", name: "Gold Phoenix", price: 350, color: "rgb(245, 200, 60)", draw: drawGoldShip },
-  { id: "void", name: "Void Stealth", price: 600, color: "rgb(190, 130, 255)", draw: drawVoidShip },
+  { id: "crimson", name: "Crimson Raptor", price: 1500, color: "rgb(214, 44, 44)", draw: drawCrimsonShip },
+  { id: "emerald", name: "Emerald Wasp", price: 2000, color: "rgb(54, 200, 110)", draw: drawEmeraldShip },
+  { id: "azure", name: "Azure Falcon", price: 2500, color: "rgb(60, 140, 235)", draw: drawAzureShip },
+  { id: "gold", name: "Gold Phoenix", price: 3500, color: "rgb(245, 200, 60)", draw: drawGoldShip },
+  { id: "inferno", name: "Inferno", price: 4500, color: "rgb(255, 140, 50)", draw: drawInfernoShip },
+  { id: "void", name: "Void Stealth", price: 6000, color: "rgb(190, 130, 255)", draw: drawVoidShip },
+  { id: "spectre", name: "Spectre", price: 8000, color: "rgb(212, 222, 238)", draw: drawSpectreShip },
 ];
 
 export const GUN_SKINS = [
   { id: "standard", name: "Standard", price: 0, color: "rgb(180, 240, 255)", draw: drawStandardShot },
-  { id: "plasma", name: "Plasma", price: 100, color: "rgb(255, 120, 255)", draw: drawPlasmaShot },
-  { id: "amber", name: "Amber Bolt", price: 150, color: "rgb(255, 190, 80)", draw: drawAmberShot },
-  { id: "lime", name: "Lime Comet", price: 250, color: "rgb(170, 255, 90)", draw: drawLimeShot },
-  { id: "ruby", name: "Ruby Shard", price: 400, color: "rgb(255, 90, 110)", draw: drawRubyShot },
+  { id: "plasma", name: "Plasma", price: 1000, color: "rgb(255, 120, 255)", draw: drawPlasmaShot },
+  { id: "amber", name: "Amber Bolt", price: 1500, color: "rgb(255, 190, 80)", draw: drawAmberShot },
+  { id: "frost", name: "Frost Shard", price: 2000, color: "rgb(190, 235, 255)", draw: drawFrostShot },
+  { id: "lime", name: "Lime Comet", price: 2500, color: "rgb(170, 255, 90)", draw: drawLimeShot },
+  { id: "venom", name: "Venom", price: 3000, color: "rgb(140, 255, 140)", draw: drawVenomShot },
+  { id: "ruby", name: "Ruby Shard", price: 4000, color: "rgb(255, 90, 110)", draw: drawRubyShot },
+  { id: "solar", name: "Solar Flare", price: 5000, color: "rgb(255, 230, 120)", draw: drawSolarShot },
 ];
 
 const CATALOG = { ship: SHIP_SKINS, gun: GUN_SKINS };

@@ -7,6 +7,7 @@ import {
   ASTEROID_MIN_RADIUS,
   ASTEROID_MAX_RADIUS,
   ASTEROID_SPLIT_THRESHOLD,
+  ASTEROID_MAX_SPEED,
 } from "./gameConstants.js";
 
 export function getAsteroidSpawnData() {
@@ -23,12 +24,14 @@ export function getAimedAsteroidVelocity(spawn, radius) {
   const targetY = CANVAS.height / 2 + (Math.random() - 0.5) * CANVAS.height * 0.6;
 
   const angle = Math.atan2(targetY - spawn.y, targetX - spawn.x);
-  const sizeFactor = Math.min(2.4, Math.max(0.6, 42 / radius));
-  const speed =
-    (1.8 + Math.random() * 1.8) *
-    sizeFactor *
-    getDifficulty().speedMult *
-    runtime.speedRamp;
+  const sizeFactor = Math.min(2.0, Math.max(0.7, 40 / radius));
+  const speed = Math.min(
+    ASTEROID_MAX_SPEED,
+    (1.8 + Math.random() * 1.6) *
+      sizeFactor *
+      getDifficulty().speedMult *
+      runtime.speedRamp
+  );
 
   return { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
 }
@@ -62,8 +65,10 @@ export function splitAsteroid(asteroid) {
     for (let i = 0; i < 2; i++) {
       // Send shards out to either side of the parent's travel direction.
       const angle = baseAngle + (i === 0 ? 1 : -1) * (0.6 + Math.random() * 0.5);
-      const speed =
-        (2.5 + Math.random() * 3) * getDifficulty().speedMult * runtime.speedRamp;
+      const speed = Math.min(
+        ASTEROID_MAX_SPEED,
+        (2.5 + Math.random() * 2.5) * getDifficulty().speedMult * runtime.speedRamp
+      );
       children.push(
         new Asteroid({
           coordinates: { x: asteroid.coordinates.x, y: asteroid.coordinates.y },
