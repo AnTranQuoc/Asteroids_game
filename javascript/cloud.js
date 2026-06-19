@@ -35,8 +35,10 @@ function applyProfile(row) {
   cloud.name = p.name ?? "";
 }
 
-// Signs in anonymously (creating a persistent identity in this browser) and
-// loads the player's profile. Falls back to offline defaults on any failure.
+// Loads the Supabase client and restores an EXISTING session if the player
+// already has one. Does NOT create an account — that happens lazily on the
+// first real action (see ensureSignedIn) so mere visitors don't fill the DB
+// with empty profiles.
 export async function initCloud() {
   try {
     const { createClient } = await import(
@@ -47,33 +49,59 @@ export async function initCloud() {
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    if (!session) {
-      const { error } = await supabase.auth.signInAnonymously();
-      if (error) throw error;
+    if (session) {
+      // Returning player: load their saved profile.
+      await loadProfile();
+      cloud.online = true;
+      await syncLocalName();
     }
-
-    const { data, error } = await supabase.from("profiles").select("*").single();
-    if (error) throw error;
-    applyProfile(data);
-    cloud.online = true;
-
-    // If a name was chosen locally (e.g. on the name screen before sign-in
-    // finished), push it to the server so the profile matches.
-    const localName = localStorage.getItem("playerName");
-    if (localName && cloud.name !== localName) {
-      await cloudSetName(localName);
-    }
+    // No session => no account yet. The leaderboard still reads publicly.
   } catch (err) {
     console.warn("Cloud unavailable, running offline:", err);
-    cloud.online = false;
   } finally {
     cloud.ready = true;
   }
 }
 
+async function loadProfile() {
+  const { data, error } = await supabase.from("profiles").select("*").single();
+  if (error) throw error;
+  applyProfile(data);
+}
+
+// Pushes a locally-chosen name to the server if it isn't there yet.
+async function syncLocalName() {
+  const localName = localStorage.getItem("playerName");
+  if (localName && cloud.name !== localName) {
+    await cloudSetName(localName);
+  }
+}
+
+// Creates the anonymous account on demand — only when the player actually does
+// something worth saving. Returns true once signed in with a profile loaded.
+async function ensureSignedIn() {
+  if (!supabase) return false;
+  if (cloud.online) return true;
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) throw error;
+    }
+    await loadProfile();
+    cloud.online = true;
+    return true;
+  } catch (err) {
+    console.warn("Sign-in failed:", err);
+    return false;
+  }
+}
+
 // Buys (or, if already owned, equips) a skin. Server validates price + funds.
 export async function cloudPurchaseSkin(category, id) {
-  if (!cloud.online) return false;
+  if (!(await ensureSignedIn())) return false;
   const { data, error } = await supabase.rpc("purchase_skin", {
     p_category: category,
     p_skin_id: id,
@@ -88,7 +116,8 @@ export async function cloudPurchaseSkin(category, id) {
 
 // Submits a finished run. Server grants the money and updates the best score.
 export async function cloudSubmitRun(score, mode) {
-  if (!cloud.online || score <= 0) return;
+  if (score <= 0) return;
+  if (!(await ensureSignedIn())) return;
   const { data, error } = await supabase.rpc("submit_run", {
     p_score: Math.floor(score),
     p_mode: mode,
@@ -103,7 +132,7 @@ export async function cloudSubmitRun(score, mode) {
 // Returns { ok: true } or { ok: false, error: "<message>" } so the UI can tell
 // the player when a name is already taken.
 export async function cloudSetName(name) {
-  if (!cloud.online) return { ok: false, error: "offline" };
+  if (!(await ensureSignedIn())) return { ok: false, error: "offline" };
   const { data, error } = await supabase.rpc("set_player_name", { p_name: name });
   if (error) {
     console.warn("set_player_name failed:", error.message);
