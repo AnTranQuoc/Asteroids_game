@@ -86,10 +86,10 @@ const S = {
   copiedAt: 0, // when the room code was last copied (for the "COPIED!" hint)
 };
 
-// How far in the past (ms) clients render remote entities. A ~100ms buffer lets
-// us always interpolate between two snapshots we already have, absorbing the
-// jitter of the relay so motion stays smooth instead of freezing and jumping.
-const RENDER_DELAY = 110;
+// How far in the past (ms) clients render remote entities. Just enough to
+// usually have two snapshots (20Hz => 50ms apart) bracketing the render time so
+// interpolation stays smooth, while keeping the added visible delay small.
+const RENDER_DELAY = 70;
 
 export function brActive() {
   return S.open;
@@ -248,8 +248,18 @@ function reconcilePrediction(snap) {
   if (!S.pred) {
     S.pred = { x: self.x, y: self.y, vx: 0, vy: 0 };
   } else if (self.a) {
-    S.pred.x += (self.x - S.pred.x) * 0.2;
-    S.pred.y += (self.y - S.pred.y) * 0.2;
+    // The server position is delayed by the round-trip, so don't yank the local
+    // ship toward it every snapshot (that reads as lag/rubber-banding). Snap only
+    // on a big desync (knockback / teleport); otherwise correct very gently.
+    const ex = self.x - S.pred.x;
+    const ey = self.y - S.pred.y;
+    if (ex * ex + ey * ey > 150 * 150) {
+      S.pred.x = self.x;
+      S.pred.y = self.y;
+    } else {
+      S.pred.x += ex * 0.06;
+      S.pred.y += ey * 0.06;
+    }
   } else {
     // Dead: trust the server completely.
     S.pred.x = self.x;
@@ -555,14 +565,18 @@ function drawMenu() {
 function lobbyButtons() {
   const cx = CANVAS.width / 2;
   const btns = [];
-  // Copy the room code to the clipboard (sits just under the big code).
+  // Small COPY button just to the right of the big room code.
+  CONTEXT.save();
+  CONTEXT.font = "bold 64px monospace";
+  const codeW = CONTEXT.measureText(S.code || net.code || "-----").width;
+  CONTEXT.restore();
   btns.push({
     id: "copy",
-    label: performance.now() - S.copiedAt < 1500 ? "COPIED!" : "COPY CODE",
-    x: cx - 100,
-    y: 258,
-    w: 200,
-    h: 38,
+    label: performance.now() - S.copiedAt < 1500 ? "COPIED" : "COPY",
+    x: cx + codeW / 2 + 16,
+    y: 197,
+    w: 84,
+    h: 34,
   });
   if (net.isHost) {
     btns.push({ id: "start", label: "START MATCH", x: cx - 150, y: CANVAS.height - 170, w: 300, h: 60 });
@@ -610,7 +624,7 @@ function drawLobby() {
   for (const b of lobbyButtons()) {
     const color =
       b.id === "start" ? "120, 230, 160" : b.id === "copy" ? "120, 200, 255" : "160, 160, 175";
-    drawButton(b, { color, font: b.id === "copy" ? "18px monospace" : "22px monospace" });
+    drawButton(b, { color, font: b.id === "copy" ? "14px monospace" : "22px monospace" });
   }
   if (S.error) {
     CONTEXT.fillStyle = "rgb(240, 90, 90)";

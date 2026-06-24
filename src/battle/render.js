@@ -161,14 +161,11 @@ function drawLoot(item) {
 function drawBullet(b) {
   const sx = worldToScreenX(b.x);
   const sy = worldToScreenY(b.y);
-  CONTEXT.save();
+  // Solid dot (no shadowBlur — glow on every bullet is a real perf drain).
   CONTEXT.beginPath();
-  CONTEXT.arc(sx, sy, 3, 0, Math.PI * 2);
+  CONTEXT.arc(sx, sy, 3.5, 0, Math.PI * 2);
   CONTEXT.fillStyle = `rgb(${b.c})`;
-  CONTEXT.shadowColor = `rgb(${b.c})`;
-  CONTEXT.shadowBlur = 8;
   CONTEXT.fill();
-  CONTEXT.restore();
 }
 
 // Draws one ship (neon triangle) at a world position, with name + health bar.
