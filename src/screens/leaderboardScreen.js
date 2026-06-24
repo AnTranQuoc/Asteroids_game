@@ -1,8 +1,8 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { OFF_WHITE, GREY } from "./gameConstants.js";
-import { DIFFICULTY_ORDER, DIFFICULTIES } from "./difficulty.js";
-import { fetchTopScoresByMode, isLeaderboardConfigured } from "./leaderboard.js";
-import { drawButton } from "./ui.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { OFF_WHITE, GREY } from "../core/constants.js";
+import { DIFFICULTY_ORDER, DIFFICULTIES } from "../systems/difficulty.js";
+import { fetchTopScoresByMode, isLeaderboardConfigured } from "../cloud/leaderboard.js";
+import { drawButton } from "../ui/ui.js";
 
 const cache = {}; // { EASY: [{name, score}], ... }
 let loading = false;

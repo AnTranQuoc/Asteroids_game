@@ -1,5 +1,5 @@
-import { CANVAS } from "./canvasUtils.js";
-import { player } from "./classes/gameClasses.js";
+import { CANVAS } from "./canvas.js";
+import { player } from "../entities/entities.js";
 
 export function enableCanvasWrap() {
   // Enables the spaceship to "wrap around" the canvas.

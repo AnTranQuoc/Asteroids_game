@@ -1,10 +1,10 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { OFF_WHITE, GREY } from "./gameConstants.js";
-import { DIFFICULTY_ORDER, DIFFICULTIES } from "./difficulty.js";
-import { getBestScore } from "./scoreUtils.js";
-import { getMoney } from "./money.js";
-import { getPlayerName } from "./leaderboard.js";
-import { drawButton } from "./ui.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { OFF_WHITE, GREY } from "../core/constants.js";
+import { DIFFICULTY_ORDER, DIFFICULTIES } from "../systems/difficulty.js";
+import { getBestScore } from "../systems/score.js";
+import { getMoney } from "../systems/money.js";
+import { getPlayerName } from "../cloud/leaderboard.js";
+import { drawButton } from "../ui/ui.js";
 
 const MODE_COLORS = {
   EASY: "120, 230, 160",

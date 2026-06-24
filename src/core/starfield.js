@@ -1,4 +1,4 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
+import { CANVAS, CONTEXT } from "./canvas.js";
 
 const STAR_COUNT = 160;
 const stars = [];

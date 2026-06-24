@@ -1,4 +1,4 @@
-import { CONTEXT } from "./canvasUtils.js";
+import { CONTEXT } from "../core/canvas.js";
 
 export const POWERUPS = [];
 

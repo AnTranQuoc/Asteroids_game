@@ -1,4 +1,4 @@
-import { cloud } from "./cloud.js";
+import { cloud } from "../cloud/cloud.js";
 
 // Money is owned by the server now (see cloud.js). This module just exposes the
 // current balance plus the "earned this run" figure for the game-over screen.

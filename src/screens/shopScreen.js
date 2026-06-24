@@ -1,8 +1,8 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { OFF_WHITE, GREY, MOUSE } from "./gameConstants.js";
-import { SHIP_SKINS, GUN_SKINS, isOwned, isSelected } from "./skins.js";
-import { getMoney } from "./money.js";
-import { drawButton, isInside } from "./ui.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { OFF_WHITE, GREY, MOUSE } from "../core/constants.js";
+import { SHIP_SKINS, GUN_SKINS, isOwned, isSelected } from "../systems/skins.js";
+import { getMoney } from "../systems/money.js";
+import { drawButton, isInside } from "../ui/ui.js";
 
 // Each category is a single centred row; tile width shrinks to fit the screen.
 const MARGIN = 30;

@@ -1,5 +1,5 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { MOUSE } from "./gameConstants.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { MOUSE } from "../core/constants.js";
 
 // Returns true if the point is inside the button rect.
 export function isInside(px, py, btn) {

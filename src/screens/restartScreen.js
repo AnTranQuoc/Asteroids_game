@@ -1,10 +1,10 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { score, getBestScore } from "./scoreUtils.js";
-import { OFF_WHITE, TRANSLUCENT } from "./gameConstants.js";
-import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyState } from "./difficulty.js";
-import { getMoney, getLastEarned } from "./money.js";
-import { getPlayerName } from "./leaderboard.js";
-import { drawButton } from "./ui.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { score, getBestScore } from "../systems/score.js";
+import { OFF_WHITE, TRANSLUCENT } from "../core/constants.js";
+import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyState } from "../systems/difficulty.js";
+import { getMoney, getLastEarned } from "../systems/money.js";
+import { getPlayerName } from "../cloud/leaderboard.js";
+import { drawButton } from "../ui/ui.js";
 
 export function getRestartButtons() {
   const cx = CANVAS.width / 2;

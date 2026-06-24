@@ -1,10 +1,10 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { OFF_WHITE, GREY } from "./gameConstants.js";
-import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyState } from "./difficulty.js";
-import { getSelectedShipSkin, getSelectedGunSkin } from "./skins.js";
-import { getMoney } from "./money.js";
-import { getPlayerName } from "./leaderboard.js";
-import { drawButton } from "./ui.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { OFF_WHITE, GREY } from "../core/constants.js";
+import { DIFFICULTIES, DIFFICULTY_ORDER, difficultyState } from "../systems/difficulty.js";
+import { getSelectedShipSkin, getSelectedGunSkin } from "../systems/skins.js";
+import { getMoney } from "../systems/money.js";
+import { getPlayerName } from "../cloud/leaderboard.js";
+import { drawButton } from "../ui/ui.js";
 
 // Shared layout so drawing and click hit-testing use the exact same rects.
 export function getStartButtons() {
