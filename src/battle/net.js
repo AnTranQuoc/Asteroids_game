@@ -36,6 +36,11 @@ const messageHandlers = new Map(); // event -> Set(cb)
 
 export function onRoster(cb) {
   rosterHandler = cb;
+  // Fire immediately with whatever roster we already have: the presence 'sync'
+  // that first populates net.roster happens during connect, BEFORE callers get
+  // a chance to register here, so without this a freshly-joined client would
+  // never see the existing members until the next join/leave.
+  if (net.roster.length) cb(net.roster);
 }
 
 export function onMessage(event, cb) {

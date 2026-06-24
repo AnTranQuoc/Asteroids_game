@@ -47,8 +47,9 @@ export function updateZone(zone, nowMs) {
   const elapsed = nowMs - zone.phaseStart;
 
   if (!zone.shrinking) {
-    // Holding before this phase's shrink begins.
-    zone.dps = zone.phase > 0 ? ZONE_PHASES[zone.phase - 1].dps : 0;
+    // Holding before this phase's shrink begins. Even now, being outside the
+    // current safe circle costs damage (so the zone matters from the start).
+    zone.dps = zone.phase > 0 ? ZONE_PHASES[zone.phase - 1].dps : phase.dps;
     if (elapsed >= phase.waitMs) {
       zone.shrinking = true;
       zone.phaseStart = nowMs;

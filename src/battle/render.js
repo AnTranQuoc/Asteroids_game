@@ -389,7 +389,7 @@ function drawMinimap(view, selfId) {
 // ----- Public: parachute / drop-in overview -----
 // Shows the whole map fitted to the screen; the local player moves a landing
 // reticle with the mouse. `reticle` is {x, y} in world coords (or null).
-export function drawDropOverview(view, selfId, reticle, nowMs) {
+export function drawDropOverview(view, selfId, reticle, chosen, nowMs) {
   clearBg();
   const margin = 60;
   const scale = Math.min(
@@ -421,16 +421,26 @@ export function drawDropOverview(view, selfId, reticle, nowMs) {
     CONTEXT.fillRect(wx(item.x) - 1.5, wy(item.y) - 1.5, 3, 3);
   }
 
-  // Other players' chosen drop markers.
-  for (const p of view.players) {
-    if (p.id === selfId) continue;
-    CONTEXT.fillStyle = p.color;
+  // (Other players' landing choices are intentionally hidden.)
+
+  // The spot the player has locked in.
+  if (chosen) {
+    CONTEXT.fillStyle = "rgb(120, 230, 160)";
     CONTEXT.beginPath();
-    CONTEXT.arc(wx(p.dx ?? p.dropX ?? WORLD_W / 2), wy(p.dy ?? p.dropY ?? WORLD_H / 2), 5, 0, Math.PI * 2);
+    CONTEXT.arc(wx(chosen.x), wy(chosen.y), 6, 0, Math.PI * 2);
     CONTEXT.fill();
+    CONTEXT.strokeStyle = "rgb(120, 230, 160)";
+    CONTEXT.lineWidth = 2;
+    CONTEXT.beginPath();
+    CONTEXT.arc(wx(chosen.x), wy(chosen.y), 13, 0, Math.PI * 2);
+    CONTEXT.stroke();
+    CONTEXT.fillStyle = "rgb(120, 230, 160)";
+    CONTEXT.font = "12px monospace";
+    CONTEXT.textAlign = "center";
+    CONTEXT.fillText("DROP HERE", wx(chosen.x), wy(chosen.y) - 20);
   }
 
-  // Local landing reticle.
+  // Local landing reticle (mouse hover preview).
   if (reticle) {
     CONTEXT.strokeStyle = "rgb(120, 230, 160)";
     CONTEXT.lineWidth = 2;
