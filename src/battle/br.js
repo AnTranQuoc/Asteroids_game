@@ -66,10 +66,10 @@ const S = {
   busy: false,
   roster: [],
   rosterMap: new Map(), // id -> { name, color } (clients learn this on 'start')
-  // client snapshot buffer
-  snapPrev: null,
+  // client snapshot buffer: timestamped snapshots, rendered slightly in the past
+  // so network jitter is smoothed out (see clientView/RENDER_DELAY).
+  snapBuf: [],
   snapCurr: null,
-  snapCurrT: 0,
   // local input
   keys: { w: false, a: false, s: false, d: false },
   firing: false,
@@ -85,6 +85,11 @@ const S = {
   hazardShapes: new Map(),
   copiedAt: 0, // when the room code was last copied (for the "COPIED!" hint)
 };
+
+// How far in the past (ms) clients render remote entities. A ~100ms buffer lets
+// us always interpolate between two snapshots we already have, absorbing the
+// jitter of the relay so motion stays smooth instead of freezing and jumping.
+const RENDER_DELAY = 110;
 
 export function brActive() {
   return S.open;
@@ -102,7 +107,8 @@ async function closeBattleRoyale() {
   S.screen = "menu";
   stopHostTicker();
   match.active = false;
-  S.snapPrev = S.snapCurr = null;
+  S.snapBuf = [];
+  S.snapCurr = null;
   S.pred = null;
   await leaveRoom();
 }
@@ -129,15 +135,16 @@ function wireHandlers() {
       S.rosterMap = new Map();
       for (const m of p.roster) S.rosterMap.set(m.id, { name: m.name, color: m.color });
       S.screen = "drop";
-      S.snapPrev = S.snapCurr = null;
+      S.snapBuf = [];
+      S.snapCurr = null;
       S.pred = null;
       S.chosenDrop = null;
       S.hazardShapes = new Map(); // fresh rocks for the new match
     });
     onMessage("snapshot", (p) => {
-      S.snapPrev = S.snapCurr;
-      S.snapCurr = p;
-      S.snapCurrT = performance.now();
+      S.snapCurr = p; // latest authoritative state (for prediction + HUD)
+      S.snapBuf.push({ t: performance.now(), snap: p });
+      if (S.snapBuf.length > 12) S.snapBuf.shift();
       // Keep the client's screen in sync with the authoritative phase. (Drop is
       // normally entered via the 'start' message, but fall into it from a
       // snapshot too in case that one-shot message was missed.)
@@ -263,6 +270,25 @@ function predictLocal() {
   }
   S.pred.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_W - PLAYER_RADIUS, S.pred.x + S.pred.vx));
   S.pred.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_H - PLAYER_RADIUS, S.pred.y + S.pred.vy));
+
+  // Asteroids are solid: mirror the host's push-out locally so the predicted
+  // ship can't glide through rocks (otherwise it would until the host corrects).
+  const haz = S.snapCurr && S.snapCurr.h;
+  if (haz) {
+    for (const a of haz) {
+      const dx = S.pred.x - a.x;
+      const dy = S.pred.y - a.y;
+      const minDist = a.r + PLAYER_RADIUS;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < minDist * minDist) {
+        const dist = Math.sqrt(d2) || 0.001;
+        S.pred.x = a.x + (dx / dist) * minDist;
+        S.pred.y = a.y + (dy / dist) * minDist;
+        S.pred.vx = 0;
+        S.pred.vy = 0;
+      }
+    }
+  }
 }
 
 // ----- Host simulation ticker (background-tab proof) ------------------------
@@ -348,11 +374,26 @@ function hostView() {
 }
 
 function clientView(now) {
-  const curr = S.snapCurr;
-  if (!curr) return null;
-  const prev = S.snapPrev;
-  const interval = 1000 / SNAPSHOT_HZ;
-  const t = Math.max(0, Math.min(1, (now - S.snapCurrT) / interval));
+  if (!S.snapBuf.length) return null;
+
+  // Render slightly in the past and interpolate between the two buffered
+  // snapshots that bracket that render time — this is what keeps remote motion
+  // smooth under relay jitter (the old code interpolated against "now" and
+  // froze whenever a snapshot arrived late).
+  const renderT = now - RENDER_DELAY;
+  let b0 = S.snapBuf[0];
+  let b1 = S.snapBuf[0];
+  for (let i = 0; i < S.snapBuf.length; i++) {
+    if (S.snapBuf[i].t <= renderT) {
+      b0 = S.snapBuf[i];
+      b1 = S.snapBuf[i + 1] || S.snapBuf[i];
+    } else break;
+  }
+  const span = b1.t - b0.t;
+  const t = span > 0 ? Math.max(0, Math.min(1, (renderT - b0.t) / span)) : 0;
+  const prev = b0.snap;
+  const curr = b1.snap;
+  const latest = S.snapCurr || curr; // freshest values for HUD / non-positional fields
 
   const players = curr.pl.map((cp) => {
     const meta = S.rosterMap.get(cp.id) || { name: "Pilot", color: "#cccccc" };
@@ -407,14 +448,14 @@ function clientView(now) {
   return {
     phase: curr.ph,
     players,
-    bullets: curr.b.map((b) => ({ x: b.x, y: b.y, c: b.c })),
     hazards,
-    loot: curr.l.map((it) => ({ id: it.id, x: it.x, y: it.y, k: it.k })),
-    zone: curr.z,
-    alive: curr.al,
-    winner: curr.win,
-    feed: curr.fd || [],
-    end: curr.end,
+    bullets: latest.b.map((b) => ({ x: b.x, y: b.y, c: b.c })),
+    loot: latest.l.map((it) => ({ id: it.id, x: it.x, y: it.y, k: it.k })),
+    zone: latest.z,
+    alive: latest.al,
+    winner: latest.win,
+    feed: latest.fd || [],
+    end: latest.end,
   };
 }
 

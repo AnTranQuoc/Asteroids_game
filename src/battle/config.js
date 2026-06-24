@@ -6,7 +6,7 @@
     export const PLAYER_RADIUS = 18;
     export const PLAYER_MAX_HP = 100;
     export const SHIELD_MAX = 100;
-    export const SNAPSHOT_HZ = 15;
+    export const SNAPSHOT_HZ = 20;
     export const INPUT_HZ = 20;
     export const PLAYER_COLORS = ["#5fd0ff", "#ff7a7a", "#9be36b", "#ffd24d"];
     export const DROP_DURATION_MS = 6000;
