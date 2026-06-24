@@ -388,6 +388,12 @@ export function getSelectedShipSkin() {
   return getSelectedSkin("ship");
 }
 
+// Looks up a ship skin by id (falls back to Classic). Used by Battle Royale to
+// render each player's equipped hull from the skin id sent over the network.
+export function getShipSkinById(id) {
+  return SHIP_SKINS.find((s) => s.id === id) || SHIP_SKINS[0];
+}
+
 export function getSelectedGunSkin() {
   return getSelectedSkin("gun");
 }

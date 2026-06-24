@@ -67,7 +67,7 @@ function rebuildRoster() {
   for (const key of Object.keys(state)) {
     const meta = state[key][0];
     if (!meta) continue;
-    list.push({ id: meta.id, name: meta.name, isHost: !!meta.isHost });
+    list.push({ id: meta.id, name: meta.name, isHost: !!meta.isHost, ship: meta.ship });
   }
   // Stable order: host first, then by join time.
   list.sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0));
@@ -123,24 +123,25 @@ function connectChannel(code, meta) {
 }
 
 // Creates a fresh room and joins it as host.
-export async function createRoom(name) {
+export async function createRoom(name, ship) {
   net.selfId = newId();
   net.isHost = true;
   const code = randomCode();
-  await connectChannel(code, { id: net.selfId, name, isHost: true });
+  await connectChannel(code, { id: net.selfId, name, isHost: true, ship });
   return code;
 }
 
 // Joins an existing room as a client. Rejects if the room is full. (There's a
 // small race when two people join a near-full room at once; acceptable for a
 // friends-only mode.)
-export async function joinRoom(code, name) {
+export async function joinRoom(code, name, ship) {
   net.selfId = newId();
   net.isHost = false;
   await connectChannel(code.toUpperCase(), {
     id: net.selfId,
     name,
     isHost: false,
+    ship,
   });
   // Give presence a beat to sync so we can see if the room is already full.
   await new Promise((r) => setTimeout(r, 350));

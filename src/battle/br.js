@@ -17,6 +17,7 @@ import { MOUSE } from "../core/constants.js";
 import { drawButton, isInside } from "../ui/ui.js";
 import { gamePrompt, dialogOpen } from "../ui/dialog.js";
 import { getPlayerName } from "../cloud/leaderboard.js";
+import { getSelectedSkin } from "../systems/skins.js";
 import {
   SNAPSHOT_HZ,
   INPUT_HZ,
@@ -133,7 +134,7 @@ function wireHandlers() {
     // Client receives the match kickoff and the stream of snapshots.
     onMessage("start", (p) => {
       S.rosterMap = new Map();
-      for (const m of p.roster) S.rosterMap.set(m.id, { name: m.name, color: m.color });
+      for (const m of p.roster) S.rosterMap.set(m.id, { name: m.name, color: m.color, ship: m.ship });
       S.screen = "drop";
       S.snapBuf = [];
       S.snapCurr = null;
@@ -162,7 +163,7 @@ async function hostRoom() {
   S.busy = true;
   S.error = "";
   try {
-    const code = await createRoom(getPlayerName() || "Host");
+    const code = await createRoom(getPlayerName() || "Host", getSelectedSkin("ship").id);
     wireHandlers();
     S.screen = "lobby";
     S.code = code;
@@ -180,7 +181,7 @@ async function joinRoomFlow() {
   S.busy = true;
   S.error = "";
   try {
-    await joinRoom(code.trim(), getPlayerName() || "Pilot");
+    await joinRoom(code.trim(), getPlayerName() || "Pilot", getSelectedSkin("ship").id);
     wireHandlers();
     S.screen = "lobby";
     S.code = net.code;
@@ -204,6 +205,7 @@ function startMatchAsHost() {
     id: m.id,
     name: m.name,
     color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+    ship: m.ship,
   }));
   startMatch(net.roster, now);
   const deadline = now + DROP_DURATION_MS;
@@ -361,7 +363,7 @@ function hostView() {
       id: p.id, x: p.x, y: p.y, rot: p.rot, hp: p.hp, sh: p.shieldHp,
       a: p.alive, w: p.weapon, am: p.ammo === Infinity ? -1 : p.ammo,
       k: p.kills, pl: p.placement, th: p.thrusting,
-      name: p.name, color: p.color, dx: p.dropX, dy: p.dropY,
+      name: p.name, color: p.color, ship: p.shipSkin, dx: p.dropX, dy: p.dropY,
     });
   }
   return {
@@ -406,7 +408,7 @@ function clientView(now) {
   const latest = S.snapCurr || curr; // freshest values for HUD / non-positional fields
 
   const players = curr.pl.map((cp) => {
-    const meta = S.rosterMap.get(cp.id) || { name: "Pilot", color: "#cccccc" };
+    const meta = S.rosterMap.get(cp.id) || { name: "Pilot", color: "#cccccc", ship: "classic" };
     let x = cp.x;
     let y = cp.y;
     let rot = cp.rot;
@@ -427,7 +429,7 @@ function clientView(now) {
     return {
       id: cp.id, x, y, rot, hp: cp.hp, sh: cp.sh, a: !!cp.a, w: cp.w,
       am: cp.am, k: cp.k, pl: cp.pl, th: !!cp.th,
-      name: meta.name, color: meta.color, dx: cp.dx, dy: cp.dy,
+      name: meta.name, color: meta.color, ship: meta.ship, dx: cp.dx, dy: cp.dy,
     };
   });
 
