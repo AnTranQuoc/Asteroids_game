@@ -7,11 +7,12 @@ import {
   PLAYER_MAX_HP,
   PLAYER_COLORS,
   HAZARD_CONTACT_DAMAGE,
+  HAZARD_KNOCKBACK,
 } from "./config.js";
 import { getWeapon, STARTER_WEAPON } from "./weapons.js";
 import { createZone, updateZone, isOutsideZone, zoneSnapshot } from "./zone.js";
 import { spawnLoot, touchingLoot, applyLoot } from "./loot.js";
-import { spawnHazards, updateHazards } from "./hazards.js";
+import { spawnHazards, updateHazards, splitHazard, HAZARD_MAX } from "./hazards.js";
 
 export const match = {
   active: false,
@@ -215,17 +216,29 @@ export function step(nowMs) {
     }
   }
 
-  // Hazards drift and damage players on contact.
+  // Hazards drift. They are SOLID: a ship can't pass through one — it gets
+  // shoved back out to the rock's surface and knocked away, taking contact
+  // damage on a short cooldown.
   updateHazards(match.hazards);
-  for (const a of match.hazards) {
-    for (const p of match.players.values()) {
-      if (!p.alive || nowMs < p.invulnUntil) continue;
+  for (const p of match.players.values()) {
+    if (!p.alive) continue;
+    for (const a of match.hazards) {
       const dx = p.x - a.x;
       const dy = p.y - a.y;
-      const reach = a.r + PLAYER_RADIUS;
-      if (dx * dx + dy * dy < reach * reach) {
-        damagePlayer(p, HAZARD_CONTACT_DAMAGE, null, nowMs);
-        p.invulnUntil = nowMs + 900; // grace so one rock isn't instant death
+      const minDist = a.r + PLAYER_RADIUS;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < minDist * minDist) {
+        const dist = Math.sqrt(d2) || 0.001;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        p.x = a.x + nx * minDist; // push out to the surface
+        p.y = a.y + ny * minDist;
+        p.vx = nx * HAZARD_KNOCKBACK; // bounce away
+        p.vy = ny * HAZARD_KNOCKBACK;
+        if (nowMs >= p.invulnUntil) {
+          damagePlayer(p, HAZARD_CONTACT_DAMAGE, null, nowMs);
+          p.invulnUntil = nowMs + 900;
+        }
       }
     }
   }
@@ -252,6 +265,23 @@ export function step(nowMs) {
         damagePlayer(p, b.damage, b.owner, nowMs);
         hit = true;
         break;
+      }
+    }
+    // Bullets also break asteroids (classic split into smaller, faster shards).
+    if (!hit) {
+      for (let h = match.hazards.length - 1; h >= 0; h--) {
+        const a = match.hazards[h];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const reach = a.r + 4;
+        if (dx * dx + dy * dy < reach * reach) {
+          match.hazards.splice(h, 1);
+          if (match.hazards.length < HAZARD_MAX) {
+            for (const shard of splitHazard(a)) match.hazards.push(shard);
+          }
+          hit = true;
+          break;
+        }
       }
     }
     if (hit) match.bullets.splice(i, 1);
@@ -295,6 +325,7 @@ export function snapshot() {
     pl: players,
     b: match.bullets.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), c: b.color })),
     h: match.hazards.map((a) => ({
+      id: a.id,
       x: Math.round(a.x),
       y: Math.round(a.y),
       r: Math.round(a.r),

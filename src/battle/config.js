@@ -20,4 +20,5 @@
     export const ZONE_START_RADIUS = Math.min(WORLD_W, WORLD_H) * 0.55;
     export const HAZARD_COUNT = 16;
     export const HAZARD_CONTACT_DAMAGE = 18;
+export const HAZARD_KNOCKBACK = 8; // Speed a rock shoves a ship away on contact.
     export const LOOT_COUNT = 26;

@@ -81,21 +81,37 @@ function drawZone(zone) {
   CONTEXT.restore();
 }
 
+// Jagged rocky outline + neon glow, matching single-player Asteroid mode.
 function drawHazard(a) {
   const sx = worldToScreenX(a.x);
   const sy = worldToScreenY(a.y);
   if (sx < -a.r || sx > CANVAS.width + a.r || sy < -a.r || sy > CANVAS.height + a.r)
     return;
+  const numPoints = a.numPoints || 12;
+  const offsets = a.offsets;
+  const color = a.color || "rgb(190, 190, 200)";
+
   CONTEXT.save();
   CONTEXT.translate(sx, sy);
   CONTEXT.rotate(a.ro || 0);
+
   CONTEXT.beginPath();
-  CONTEXT.arc(0, 0, a.r, 0, Math.PI * 2);
-  CONTEXT.strokeStyle = "rgb(190, 190, 200)";
+  for (let i = 0; i <= numPoints; i++) {
+    const idx = i % numPoints;
+    const angle = (Math.PI * 2 * i) / numPoints;
+    const r = a.r * (offsets ? offsets[idx] : 1);
+    const x = r * Math.cos(angle);
+    const y = r * Math.sin(angle);
+    if (i === 0) CONTEXT.moveTo(x, y);
+    else CONTEXT.lineTo(x, y);
+  }
+  CONTEXT.closePath();
+
+  CONTEXT.shadowColor = color;
+  CONTEXT.shadowBlur = 12;
   CONTEXT.lineWidth = 2;
-  CONTEXT.shadowColor = "rgb(190, 190, 200)";
-  CONTEXT.shadowBlur = 10;
-  CONTEXT.fillStyle = "rgba(45, 48, 60, 0.4)";
+  CONTEXT.strokeStyle = color;
+  CONTEXT.fillStyle = "rgba(45, 48, 60, 0.35)";
   CONTEXT.fill();
   CONTEXT.stroke();
   CONTEXT.restore();
