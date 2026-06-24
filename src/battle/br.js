@@ -46,6 +46,7 @@ import {
   step,
   snapshot,
 } from "./match.js";
+import { makeHazardShape } from "./hazards.js";
 import {
   followCamera,
   snapCamera,
@@ -80,6 +81,9 @@ const S = {
   // drop reticle (world coords) + the spot the player has locked in
   reticle: { x: WORLD_W / 2, y: WORLD_H / 2 },
   chosenDrop: null,
+  // client-side cache of each asteroid's rocky outline, keyed by hazard id
+  hazardShapes: new Map(),
+  copiedAt: 0, // when the room code was last copied (for the "COPIED!" hint)
 };
 
 export function brActive() {
@@ -128,6 +132,7 @@ function wireHandlers() {
       S.snapPrev = S.snapCurr = null;
       S.pred = null;
       S.chosenDrop = null;
+      S.hazardShapes = new Map(); // fresh rocks for the new match
     });
     onMessage("snapshot", (p) => {
       S.snapPrev = S.snapCurr;
@@ -200,6 +205,15 @@ function startMatchAsHost() {
   startHostTicker();
   S.screen = "drop";
   S.chosenDrop = null;
+}
+
+// Copies the room code to the clipboard (best-effort) and flashes a confirmation.
+function copyCode() {
+  const code = net.code || S.code || "";
+  if (code && navigator.clipboard) {
+    navigator.clipboard.writeText(code).catch(() => {});
+  }
+  S.copiedAt = performance.now();
 }
 
 // ----- Input helpers --------------------------------------------------------
@@ -318,7 +332,10 @@ function hostView() {
     phase: match.phase,
     players,
     bullets: match.bullets.map((b) => ({ x: b.x, y: b.y, c: b.color })),
-    hazards: match.hazards.map((a) => ({ x: a.x, y: a.y, r: a.r, ro: a.rot })),
+    hazards: match.hazards.map((a) => ({
+      x: a.x, y: a.y, r: a.r, ro: a.rot,
+      numPoints: a.numPoints, offsets: a.offsets, color: a.color,
+    })),
     loot: match.loot.map((it) => ({ id: it.id, x: it.x, y: it.y, k: it.kind })),
     zone: match.zone
       ? { cx: match.zone.cx, cy: match.zone.cy, r: match.zone.r, dps: match.zone.dps }
@@ -366,15 +383,25 @@ function clientView(now) {
   // Hazards keep a stable array order from the host, so interpolate by index
   // for smooth drift — but snap (don't interpolate) across a world-edge wrap,
   // which shows up as a large jump between snapshots.
-  const hazards = curr.h.map((a, i) => {
+  const hazards = curr.h.map((a) => {
+    // The rocky outline isn't sent over the wire — generate it once per asteroid
+    // id and cache it (any rock shape looks fine; it needn't match the host's).
+    let shape = S.hazardShapes.get(a.id);
+    if (!shape) {
+      shape = makeHazardShape();
+      S.hazardShapes.set(a.id, shape);
+    }
     let x = a.x;
     let y = a.y;
-    const pa = prev && prev.h[i];
+    const pa = prev && prev.h.find((q) => q.id === a.id);
     if (pa && Math.abs(pa.x - a.x) < 300 && Math.abs(pa.y - a.y) < 300) {
       x = lerp(pa.x, a.x, t);
       y = lerp(pa.y, a.y, t);
     }
-    return { x, y, r: a.r, ro: a.ro };
+    return {
+      x, y, r: a.r, ro: a.ro,
+      numPoints: shape.numPoints, offsets: shape.offsets, color: shape.color,
+    };
   });
 
   return {
@@ -487,6 +514,15 @@ function drawMenu() {
 function lobbyButtons() {
   const cx = CANVAS.width / 2;
   const btns = [];
+  // Copy the room code to the clipboard (sits just under the big code).
+  btns.push({
+    id: "copy",
+    label: performance.now() - S.copiedAt < 1500 ? "COPIED!" : "COPY CODE",
+    x: cx - 100,
+    y: 258,
+    w: 200,
+    h: 38,
+  });
   if (net.isHost) {
     btns.push({ id: "start", label: "START MATCH", x: cx - 150, y: CANVAS.height - 170, w: 300, h: 60 });
   }
@@ -531,7 +567,9 @@ function drawLobby() {
   }
 
   for (const b of lobbyButtons()) {
-    drawButton(b, { color: b.id === "start" ? "120, 230, 160" : "160, 160, 175" });
+    const color =
+      b.id === "start" ? "120, 230, 160" : b.id === "copy" ? "120, 200, 255" : "160, 160, 175";
+    drawButton(b, { color, font: b.id === "copy" ? "18px monospace" : "22px monospace" });
   }
   if (S.error) {
     CONTEXT.fillStyle = "rgb(240, 90, 90)";
@@ -617,6 +655,7 @@ function handleClick(mx, my) {
       if (!isInside(mx, my, b)) continue;
       if (b.id === "start") startMatchAsHost();
       else if (b.id === "leave") closeBattleRoyale();
+      else if (b.id === "copy") copyCode();
       return;
     }
     return;
