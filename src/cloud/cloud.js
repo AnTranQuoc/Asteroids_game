@@ -44,7 +44,11 @@ export async function initCloud() {
     const { createClient } = await import(
       "https://esm.sh/@supabase/supabase-js@2"
     );
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Raise the Realtime broadcast throttle (default 10/s) so the Battle Royale
+    // host can push ~15 snapshots/sec without being rate-limited client-side.
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      realtime: { params: { eventsPerSecond: 40 } },
+    });
 
     const {
       data: { session },

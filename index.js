@@ -23,6 +23,7 @@ import { drawMyRecordsScreen, getMyRecordsButtons } from "./src/screens/myRecord
 import { gameConfirm, gamePrompt, gameAlert, dialogOpen } from "./src/ui/dialog.js";
 import { controlScheme } from "./src/systems/controls.js";
 import { enableCanvasWrap } from "./src/core/canvasWrap.js";
+import { brActive, drawBR, openBattleRoyale } from "./src/battle/br.js";
 import { player, Projectile } from "./src/entities/entities.js";
 import { spawnAsteroids, splitAsteroid } from "./src/entities/asteroids.js";
 import { drawStarfield } from "./src/core/starfield.js";
@@ -427,6 +428,13 @@ function drawDeathSequence(now) {
 let lastFrameTime = 0;
 
 function gameLoop(currentTime) {
+  if (brActive()) {
+    // Battle Royale owns the screen, input, and its own networked loop.
+    drawBR(currentTime);
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
   if (shopOpen) {
     // Shop overlay (reachable from the start and game-over screens).
     CANVAS.style.cursor = "default";
@@ -768,6 +776,7 @@ window.addEventListener("mousemove", (e) => {
 window.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   if (dialogOpen()) return; // A modal dialog is handling input.
+  if (brActive()) return; // Battle Royale handles its own clicks.
 
   const rect = CANVAS.getBoundingClientRect();
   const mx = e.clientX - rect.left;
@@ -829,6 +838,7 @@ window.addEventListener("mousedown", (e) => {
     if (!isInside(mx, my, btn)) continue;
     if (btn.id === "difficulty") setDifficulty(btn.key);
     else if (btn.id === "start") startGame();
+    else if (btn.id === "battleroyale") openBattleRoyale();
     else if (btn.id === "restart") restartGame();
     else if (btn.id === "resume") resumeGame();
     else if (btn.id === "lobby") goToLobby();
@@ -847,6 +857,7 @@ window.addEventListener("mousedown", (e) => {
 
 window.addEventListener("keydown", (e) => {
   if (dialogOpen()) return; // Let the modal dialog handle typing.
+  if (brActive()) return; // Battle Royale handles its own keys.
 
   // Optional shortcut: pick difficulty with number keys on the menus.
   if (/^Digit[1-4]$/.test(e.code) && (!gameStarted || gameOver)) {
@@ -875,6 +886,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("keyup", (e) => {
+  if (brActive()) return; // Battle Royale handles its own keys.
   if (gameStarted) {
     switch (e.code) {
       case "KeyW":
