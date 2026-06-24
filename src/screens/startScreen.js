@@ -40,13 +40,23 @@ export function getStartButtons() {
     h: 62,
   });
 
+  // Multiplayer mode entry.
+  buttons.push({
+    id: "battleroyale",
+    label: "BATTLE ROYALE",
+    x: cx - 130,
+    y: rowY + 162,
+    w: 260,
+    h: 56,
+  });
+
   // Secondary buttons in a 2x2 grid.
   const colL = cx - 230;
   const colR = cx + 10;
-  buttons.push({ id: "shop", label: "SHOP", x: colL, y: rowY + 165, w: 220, h: 50 });
-  buttons.push({ id: "leaderboard", label: "WORLD RECORDS", x: colR, y: rowY + 165, w: 220, h: 50 });
-  buttons.push({ id: "myrecords", label: "MY RECORDS", x: colL, y: rowY + 225, w: 220, h: 50 });
-  buttons.push({ id: "name", label: "CHANGE NAME", x: colR, y: rowY + 225, w: 220, h: 50 });
+  buttons.push({ id: "shop", label: "SHOP", x: colL, y: rowY + 235, w: 220, h: 50 });
+  buttons.push({ id: "leaderboard", label: "WORLD RECORDS", x: colR, y: rowY + 235, w: 220, h: 50 });
+  buttons.push({ id: "myrecords", label: "MY RECORDS", x: colL, y: rowY + 295, w: 220, h: 50 });
+  buttons.push({ id: "name", label: "CHANGE NAME", x: colR, y: rowY + 295, w: 220, h: 50 });
 
   return buttons;
 }
@@ -114,6 +124,8 @@ export function drawStartScreenInfo() {
       });
     } else if (btn.id === "start") {
       drawButton(btn, { color: "120, 230, 160", font: "26px monospace" });
+    } else if (btn.id === "battleroyale") {
+      drawButton(btn, { color: "255, 130, 90", font: "22px monospace" });
     } else if (btn.id === "shop") {
       drawButton(btn, { color: "255, 215, 80", font: "20px monospace" });
     } else if (btn.id === "leaderboard") {
