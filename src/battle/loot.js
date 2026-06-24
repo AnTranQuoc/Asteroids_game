@@ -8,10 +8,10 @@ let lootSeq = 0;
 function spawnOne(margin) {
   const roll = Math.random();
   let kind;
-  if (roll < 0.5) {
+  if (roll < 0.42) {
     kind = "weapon:" + WEAPON_DROPS[Math.floor(Math.random() * WEAPON_DROPS.length)];
-  } else if (roll < 0.78) {
-    kind = "medkit";
+  } else if (roll < 0.76) {
+    kind = "medkit"; // ~34% — healing should be easy to find
   } else {
     kind = "shield";
   }
@@ -51,7 +51,7 @@ export function applyLoot(player, item) {
       player.ammo = weapon.startAmmo;
     }
   } else if (item.kind === "medkit") {
-    player.hp = Math.min(100, player.hp + 45);
+    player.hp = Math.min(100, player.hp + 50);
   } else if (item.kind === "shield") {
     player.shieldHp = Math.min(100, player.shieldHp + 50);
   }

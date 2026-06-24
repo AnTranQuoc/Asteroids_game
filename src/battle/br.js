@@ -77,8 +77,9 @@ const S = {
   // network timers
   lastInput: 0,
   lastSnap: 0,
-  // drop reticle (world coords)
+  // drop reticle (world coords) + the spot the player has locked in
   reticle: { x: WORLD_W / 2, y: WORLD_H / 2 },
+  chosenDrop: null,
 };
 
 export function brActive() {
@@ -95,6 +96,7 @@ export function openBattleRoyale() {
 async function closeBattleRoyale() {
   S.open = false;
   S.screen = "menu";
+  stopHostTicker();
   match.active = false;
   S.snapPrev = S.snapCurr = null;
   S.pred = null;
@@ -106,6 +108,8 @@ function wireHandlers() {
   onRoster((list) => {
     S.roster = list;
   });
+  // Seed immediately too, in case the roster was already populated before this.
+  S.roster = net.roster;
 
   if (net.isHost) {
     // Host receives client inputs and drop selections.
@@ -123,6 +127,7 @@ function wireHandlers() {
       S.screen = "drop";
       S.snapPrev = S.snapCurr = null;
       S.pred = null;
+      S.chosenDrop = null;
     });
     onMessage("snapshot", (p) => {
       S.snapPrev = S.snapCurr;
@@ -192,7 +197,9 @@ function startMatchAsHost() {
   const deadline = now + DROP_DURATION_MS;
   setDropDeadline(deadline);
   send("start", { roster, end: deadline });
+  startHostTicker();
   S.screen = "drop";
+  S.chosenDrop = null;
 }
 
 // ----- Input helpers --------------------------------------------------------
@@ -242,6 +249,47 @@ function predictLocal() {
   }
   S.pred.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_W - PLAYER_RADIUS, S.pred.x + S.pred.vx));
   S.pred.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_H - PLAYER_RADIUS, S.pred.y + S.pred.vy));
+}
+
+// ----- Host simulation ticker (background-tab proof) ------------------------
+// The authoritative sim must keep running even when the host's tab is not
+// focused. requestAnimationFrame is throttled to ~1fps in background tabs, so
+// we drive step()+broadcast from a Web Worker timer instead (worker timers are
+// not throttled), leaving rAF to handle rendering only.
+let hostWorker = null;
+
+function startHostTicker() {
+  if (hostWorker) return;
+  const src =
+    "let h=null;onmessage=(e)=>{if(e.data==='start'){h=setInterval(()=>postMessage(0),1000/60);}else if(e.data==='stop'){clearInterval(h);h=null;}};";
+  const url = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
+  hostWorker = new Worker(url);
+  hostWorker.onmessage = hostTick;
+  hostWorker.postMessage("start");
+}
+
+function stopHostTicker() {
+  if (!hostWorker) return;
+  hostWorker.postMessage("stop");
+  hostWorker.terminate();
+  hostWorker = null;
+}
+
+function hostTick() {
+  if (!net.isHost || !match.active) return;
+  const now = performance.now();
+  // Feed the host's own input into the sim.
+  const self = match.players.get(net.selfId);
+  if (self && self.alive && match.phase === "play") {
+    const aim = selfWorldAim(self.x, self.y);
+    const { dx, dy } = inputVector();
+    setInput(net.selfId, { rot: aim, dx, dy, firing: S.firing });
+  }
+  step(now);
+  if (now - S.lastSnap >= 1000 / SNAPSHOT_HZ) {
+    send("snapshot", snapshot());
+    S.lastSnap = now;
+  }
 }
 
 // ----- View construction ----------------------------------------------------
@@ -315,11 +363,25 @@ function clientView(now) {
     };
   });
 
+  // Hazards keep a stable array order from the host, so interpolate by index
+  // for smooth drift — but snap (don't interpolate) across a world-edge wrap,
+  // which shows up as a large jump between snapshots.
+  const hazards = curr.h.map((a, i) => {
+    let x = a.x;
+    let y = a.y;
+    const pa = prev && prev.h[i];
+    if (pa && Math.abs(pa.x - a.x) < 300 && Math.abs(pa.y - a.y) < 300) {
+      x = lerp(pa.x, a.x, t);
+      y = lerp(pa.y, a.y, t);
+    }
+    return { x, y, r: a.r, ro: a.ro };
+  });
+
   return {
     phase: curr.ph,
     players,
     bullets: curr.b.map((b) => ({ x: b.x, y: b.y, c: b.c })),
-    hazards: curr.h.map((a) => ({ x: a.x, y: a.y, r: a.r, ro: a.ro })),
+    hazards,
     loot: curr.l.map((it) => ({ id: it.id, x: it.x, y: it.y, k: it.k })),
     zone: curr.z,
     alive: curr.al,
@@ -334,21 +396,9 @@ export function drawBR(now) {
   if (S.screen === "menu") return drawMenu();
   if (S.screen === "lobby") return drawLobby();
 
-  // ----- Host: advance the authoritative simulation -----
+  // ----- Host: the sim + broadcast run on the worker ticker (hostTick); here
+  // we only mirror the authoritative phase into the local screen state. -----
   if (net.isHost && match.active) {
-    // Feed our own input into the sim.
-    const self = match.players.get(net.selfId);
-    if (self && self.alive) {
-      const aim = selfWorldAim(self.x, self.y);
-      const { dx, dy } = inputVector();
-      setInput(net.selfId, { rot: aim, dx, dy, firing: S.firing });
-    }
-    step(now);
-    // Broadcast a snapshot at the configured rate.
-    if (now - S.lastSnap >= 1000 / SNAPSHOT_HZ) {
-      send("snapshot", snapshot());
-      S.lastSnap = now;
-    }
     S.screen = match.phase === "end" ? "end" : match.phase === "play" ? "play" : "drop";
   } else {
     // ----- Client: send input + predict -----
@@ -496,9 +546,9 @@ function drawWaiting() {
 }
 
 function drawDrop(view, now) {
-  // Reticle follows the mouse over the fitted map.
-  S.reticle = screenToDropWorld(MOUSE.x, MOUSE.y, view);
-  drawDropOverview(view, net.selfId, S.reticle, now);
+  // Reticle follows the mouse over the fitted map; chosenDrop is the locked spot.
+  S.reticle = screenToDropWorld(MOUSE.x, MOUSE.y);
+  drawDropOverview(view, net.selfId, S.reticle, S.chosenDrop, now);
 }
 
 // Maps a screen point to world coords using the same fit transform as
@@ -572,8 +622,9 @@ function handleClick(mx, my) {
     return;
   }
   if (S.screen === "drop") {
-    // Lock a landing spot.
+    // Lock a landing spot (and remember it so we can mark it on the map).
     const w = screenToDropWorld(mx, my);
+    S.chosenDrop = w;
     if (net.isHost) setDrop(net.selfId, w.x, w.y);
     else send("drop", { id: net.selfId, x: w.x, y: w.y });
     return;
@@ -588,6 +639,9 @@ function handleClick(mx, my) {
 
 window.addEventListener("mousedown", (e) => {
   if (!S.open || e.button !== 0 || dialogOpen()) return;
+  // While Battle Royale owns the screen, don't let this click also reach the
+  // single-player handlers in index.js (e.g. "Back" landing on START GAME).
+  e.stopImmediatePropagation();
   const rect = CANVAS.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
