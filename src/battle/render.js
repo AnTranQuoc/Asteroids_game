@@ -16,6 +16,7 @@ import {
 import { WORLD_W, WORLD_H, PLAYER_RADIUS } from "./config.js";
 import { LOOT_RADIUS } from "./loot.js";
 import { getWeapon } from "./weapons.js";
+import { getShipSkinById } from "../systems/skins.js";
 
 function clearBg() {
   CONTEXT.fillStyle = GREY;
@@ -161,14 +162,11 @@ function drawLoot(item) {
 function drawBullet(b) {
   const sx = worldToScreenX(b.x);
   const sy = worldToScreenY(b.y);
-  CONTEXT.save();
+  // Solid dot (no shadowBlur — glow on every bullet is a real perf drain).
   CONTEXT.beginPath();
-  CONTEXT.arc(sx, sy, 3, 0, Math.PI * 2);
+  CONTEXT.arc(sx, sy, 3.5, 0, Math.PI * 2);
   CONTEXT.fillStyle = `rgb(${b.c})`;
-  CONTEXT.shadowColor = `rgb(${b.c})`;
-  CONTEXT.shadowBlur = 8;
   CONTEXT.fill();
-  CONTEXT.restore();
 }
 
 // Draws one ship (neon triangle) at a world position, with name + health bar.
@@ -209,23 +207,24 @@ function drawShip(p, isSelf, nowMs) {
     CONTEXT.restore();
   }
 
-  // Hull (triangle) in the player's colour.
+  // The player's equipped ship skin (drawn rotated, then back to translate-only).
+  CONTEXT.save();
   CONTEXT.rotate(p.rot);
-  CONTEXT.beginPath();
-  CONTEXT.moveTo(22, 0);
-  CONTEXT.lineTo(-12, -12);
-  CONTEXT.lineTo(-12, 12);
-  CONTEXT.closePath();
-  CONTEXT.strokeStyle = p.color;
-  CONTEXT.lineWidth = 2.5;
-  CONTEXT.shadowColor = p.color;
-  CONTEXT.shadowBlur = isSelf ? 16 : 8;
-  CONTEXT.fillStyle = "rgba(20, 22, 30, 0.6)";
-  CONTEXT.fill();
-  CONTEXT.stroke();
-  CONTEXT.restore(); // back to translate-only
+  getShipSkinById(p.ship).draw(CONTEXT);
+  CONTEXT.restore();
 
-  // Name + health bar above the ship (unrotated).
+  // Thin player-colour ring so teammates/enemies are still distinguishable even
+  // when two players run the same skin.
+  CONTEXT.beginPath();
+  CONTEXT.arc(0, 0, PLAYER_RADIUS + 7, 0, Math.PI * 2);
+  CONTEXT.strokeStyle = p.color;
+  CONTEXT.lineWidth = isSelf ? 2.5 : 1.5;
+  CONTEXT.shadowColor = p.color;
+  CONTEXT.shadowBlur = isSelf ? 10 : 4;
+  CONTEXT.stroke();
+  CONTEXT.shadowBlur = 0;
+
+  // Name + health bar above the ship (unrotated, still in ship-local space).
   CONTEXT.textAlign = "center";
   CONTEXT.textBaseline = "middle";
   CONTEXT.font = "12px monospace";

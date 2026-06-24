@@ -33,6 +33,7 @@ function makePlayer(member, index) {
     id: member.id,
     name: member.name || "Pilot",
     color: PLAYER_COLORS[index % PLAYER_COLORS.length],
+    shipSkin: member.ship || "classic",
     x: WORLD_W / 2,
     y: WORLD_H / 2,
     vx: 0,

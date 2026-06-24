@@ -17,6 +17,7 @@ import { MOUSE } from "../core/constants.js";
 import { drawButton, isInside } from "../ui/ui.js";
 import { gamePrompt, dialogOpen } from "../ui/dialog.js";
 import { getPlayerName } from "../cloud/leaderboard.js";
+import { getSelectedSkin } from "../systems/skins.js";
 import {
   SNAPSHOT_HZ,
   INPUT_HZ,
@@ -66,10 +67,10 @@ const S = {
   busy: false,
   roster: [],
   rosterMap: new Map(), // id -> { name, color } (clients learn this on 'start')
-  // client snapshot buffer
-  snapPrev: null,
+  // client snapshot buffer: timestamped snapshots, rendered slightly in the past
+  // so network jitter is smoothed out (see clientView/RENDER_DELAY).
+  snapBuf: [],
   snapCurr: null,
-  snapCurrT: 0,
   // local input
   keys: { w: false, a: false, s: false, d: false },
   firing: false,
@@ -85,6 +86,11 @@ const S = {
   hazardShapes: new Map(),
   copiedAt: 0, // when the room code was last copied (for the "COPIED!" hint)
 };
+
+// How far in the past (ms) clients render remote entities. Just enough to
+// usually have two snapshots (20Hz => 50ms apart) bracketing the render time so
+// interpolation stays smooth, while keeping the added visible delay small.
+const RENDER_DELAY = 70;
 
 export function brActive() {
   return S.open;
@@ -102,7 +108,8 @@ async function closeBattleRoyale() {
   S.screen = "menu";
   stopHostTicker();
   match.active = false;
-  S.snapPrev = S.snapCurr = null;
+  S.snapBuf = [];
+  S.snapCurr = null;
   S.pred = null;
   await leaveRoom();
 }
@@ -127,17 +134,18 @@ function wireHandlers() {
     // Client receives the match kickoff and the stream of snapshots.
     onMessage("start", (p) => {
       S.rosterMap = new Map();
-      for (const m of p.roster) S.rosterMap.set(m.id, { name: m.name, color: m.color });
+      for (const m of p.roster) S.rosterMap.set(m.id, { name: m.name, color: m.color, ship: m.ship });
       S.screen = "drop";
-      S.snapPrev = S.snapCurr = null;
+      S.snapBuf = [];
+      S.snapCurr = null;
       S.pred = null;
       S.chosenDrop = null;
       S.hazardShapes = new Map(); // fresh rocks for the new match
     });
     onMessage("snapshot", (p) => {
-      S.snapPrev = S.snapCurr;
-      S.snapCurr = p;
-      S.snapCurrT = performance.now();
+      S.snapCurr = p; // latest authoritative state (for prediction + HUD)
+      S.snapBuf.push({ t: performance.now(), snap: p });
+      if (S.snapBuf.length > 12) S.snapBuf.shift();
       // Keep the client's screen in sync with the authoritative phase. (Drop is
       // normally entered via the 'start' message, but fall into it from a
       // snapshot too in case that one-shot message was missed.)
@@ -155,7 +163,7 @@ async function hostRoom() {
   S.busy = true;
   S.error = "";
   try {
-    const code = await createRoom(getPlayerName() || "Host");
+    const code = await createRoom(getPlayerName() || "Host", getSelectedSkin("ship").id);
     wireHandlers();
     S.screen = "lobby";
     S.code = code;
@@ -173,7 +181,7 @@ async function joinRoomFlow() {
   S.busy = true;
   S.error = "";
   try {
-    await joinRoom(code.trim(), getPlayerName() || "Pilot");
+    await joinRoom(code.trim(), getPlayerName() || "Pilot", getSelectedSkin("ship").id);
     wireHandlers();
     S.screen = "lobby";
     S.code = net.code;
@@ -197,6 +205,7 @@ function startMatchAsHost() {
     id: m.id,
     name: m.name,
     color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+    ship: m.ship,
   }));
   startMatch(net.roster, now);
   const deadline = now + DROP_DURATION_MS;
@@ -241,8 +250,18 @@ function reconcilePrediction(snap) {
   if (!S.pred) {
     S.pred = { x: self.x, y: self.y, vx: 0, vy: 0 };
   } else if (self.a) {
-    S.pred.x += (self.x - S.pred.x) * 0.2;
-    S.pred.y += (self.y - S.pred.y) * 0.2;
+    // The server position is delayed by the round-trip, so don't yank the local
+    // ship toward it every snapshot (that reads as lag/rubber-banding). Snap only
+    // on a big desync (knockback / teleport); otherwise correct very gently.
+    const ex = self.x - S.pred.x;
+    const ey = self.y - S.pred.y;
+    if (ex * ex + ey * ey > 150 * 150) {
+      S.pred.x = self.x;
+      S.pred.y = self.y;
+    } else {
+      S.pred.x += ex * 0.06;
+      S.pred.y += ey * 0.06;
+    }
   } else {
     // Dead: trust the server completely.
     S.pred.x = self.x;
@@ -263,6 +282,25 @@ function predictLocal() {
   }
   S.pred.x = Math.max(PLAYER_RADIUS, Math.min(WORLD_W - PLAYER_RADIUS, S.pred.x + S.pred.vx));
   S.pred.y = Math.max(PLAYER_RADIUS, Math.min(WORLD_H - PLAYER_RADIUS, S.pred.y + S.pred.vy));
+
+  // Asteroids are solid: mirror the host's push-out locally so the predicted
+  // ship can't glide through rocks (otherwise it would until the host corrects).
+  const haz = S.snapCurr && S.snapCurr.h;
+  if (haz) {
+    for (const a of haz) {
+      const dx = S.pred.x - a.x;
+      const dy = S.pred.y - a.y;
+      const minDist = a.r + PLAYER_RADIUS;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < minDist * minDist) {
+        const dist = Math.sqrt(d2) || 0.001;
+        S.pred.x = a.x + (dx / dist) * minDist;
+        S.pred.y = a.y + (dy / dist) * minDist;
+        S.pred.vx = 0;
+        S.pred.vy = 0;
+      }
+    }
+  }
 }
 
 // ----- Host simulation ticker (background-tab proof) ------------------------
@@ -325,7 +363,7 @@ function hostView() {
       id: p.id, x: p.x, y: p.y, rot: p.rot, hp: p.hp, sh: p.shieldHp,
       a: p.alive, w: p.weapon, am: p.ammo === Infinity ? -1 : p.ammo,
       k: p.kills, pl: p.placement, th: p.thrusting,
-      name: p.name, color: p.color, dx: p.dropX, dy: p.dropY,
+      name: p.name, color: p.color, ship: p.shipSkin, dx: p.dropX, dy: p.dropY,
     });
   }
   return {
@@ -348,14 +386,29 @@ function hostView() {
 }
 
 function clientView(now) {
-  const curr = S.snapCurr;
-  if (!curr) return null;
-  const prev = S.snapPrev;
-  const interval = 1000 / SNAPSHOT_HZ;
-  const t = Math.max(0, Math.min(1, (now - S.snapCurrT) / interval));
+  if (!S.snapBuf.length) return null;
+
+  // Render slightly in the past and interpolate between the two buffered
+  // snapshots that bracket that render time — this is what keeps remote motion
+  // smooth under relay jitter (the old code interpolated against "now" and
+  // froze whenever a snapshot arrived late).
+  const renderT = now - RENDER_DELAY;
+  let b0 = S.snapBuf[0];
+  let b1 = S.snapBuf[0];
+  for (let i = 0; i < S.snapBuf.length; i++) {
+    if (S.snapBuf[i].t <= renderT) {
+      b0 = S.snapBuf[i];
+      b1 = S.snapBuf[i + 1] || S.snapBuf[i];
+    } else break;
+  }
+  const span = b1.t - b0.t;
+  const t = span > 0 ? Math.max(0, Math.min(1, (renderT - b0.t) / span)) : 0;
+  const prev = b0.snap;
+  const curr = b1.snap;
+  const latest = S.snapCurr || curr; // freshest values for HUD / non-positional fields
 
   const players = curr.pl.map((cp) => {
-    const meta = S.rosterMap.get(cp.id) || { name: "Pilot", color: "#cccccc" };
+    const meta = S.rosterMap.get(cp.id) || { name: "Pilot", color: "#cccccc", ship: "classic" };
     let x = cp.x;
     let y = cp.y;
     let rot = cp.rot;
@@ -376,7 +429,7 @@ function clientView(now) {
     return {
       id: cp.id, x, y, rot, hp: cp.hp, sh: cp.sh, a: !!cp.a, w: cp.w,
       am: cp.am, k: cp.k, pl: cp.pl, th: !!cp.th,
-      name: meta.name, color: meta.color, dx: cp.dx, dy: cp.dy,
+      name: meta.name, color: meta.color, ship: meta.ship, dx: cp.dx, dy: cp.dy,
     };
   });
 
@@ -407,14 +460,14 @@ function clientView(now) {
   return {
     phase: curr.ph,
     players,
-    bullets: curr.b.map((b) => ({ x: b.x, y: b.y, c: b.c })),
     hazards,
-    loot: curr.l.map((it) => ({ id: it.id, x: it.x, y: it.y, k: it.k })),
-    zone: curr.z,
-    alive: curr.al,
-    winner: curr.win,
-    feed: curr.fd || [],
-    end: curr.end,
+    bullets: latest.b.map((b) => ({ x: b.x, y: b.y, c: b.c })),
+    loot: latest.l.map((it) => ({ id: it.id, x: it.x, y: it.y, k: it.k })),
+    zone: latest.z,
+    alive: latest.al,
+    winner: latest.win,
+    feed: latest.fd || [],
+    end: latest.end,
   };
 }
 
@@ -514,14 +567,18 @@ function drawMenu() {
 function lobbyButtons() {
   const cx = CANVAS.width / 2;
   const btns = [];
-  // Copy the room code to the clipboard (sits just under the big code).
+  // Small COPY button just to the right of the big room code.
+  CONTEXT.save();
+  CONTEXT.font = "bold 64px monospace";
+  const codeW = CONTEXT.measureText(S.code || net.code || "-----").width;
+  CONTEXT.restore();
   btns.push({
     id: "copy",
-    label: performance.now() - S.copiedAt < 1500 ? "COPIED!" : "COPY CODE",
-    x: cx - 100,
-    y: 258,
-    w: 200,
-    h: 38,
+    label: performance.now() - S.copiedAt < 1500 ? "COPIED" : "COPY",
+    x: cx + codeW / 2 + 16,
+    y: 197,
+    w: 84,
+    h: 34,
   });
   if (net.isHost) {
     btns.push({ id: "start", label: "START MATCH", x: cx - 150, y: CANVAS.height - 170, w: 300, h: 60 });
@@ -569,7 +626,7 @@ function drawLobby() {
   for (const b of lobbyButtons()) {
     const color =
       b.id === "start" ? "120, 230, 160" : b.id === "copy" ? "120, 200, 255" : "160, 160, 175";
-    drawButton(b, { color, font: b.id === "copy" ? "18px monospace" : "22px monospace" });
+    drawButton(b, { color, font: b.id === "copy" ? "14px monospace" : "22px monospace" });
   }
   if (S.error) {
     CONTEXT.fillStyle = "rgb(240, 90, 90)";
