@@ -1,4 +1,4 @@
-import { CONTEXT } from "./canvasUtils.js";
+import { CONTEXT } from "../core/canvas.js";
 
 export function updateParticles(explosion) {
   for (let j = explosion.particles.length - 1; j >= 0; j--) {

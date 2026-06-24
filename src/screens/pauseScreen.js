@@ -1,7 +1,7 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { score } from "./scoreUtils.js";
-import { OFF_WHITE, TRANSLUCENT } from "./gameConstants.js";
-import { drawButton } from "./ui.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { score } from "../systems/score.js";
+import { OFF_WHITE, TRANSLUCENT } from "../core/constants.js";
+import { drawButton } from "../ui/ui.js";
 
 export function getPauseButtons() {
   const cx = CANVAS.width / 2;

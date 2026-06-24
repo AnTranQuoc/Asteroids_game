@@ -1,5 +1,5 @@
-import { CANVAS } from "./canvasUtils.js";
-import soundManager from "./classes/soundEffectsManager.js";
+import { CANVAS } from "../core/canvas.js";
+import soundManager from "./soundManager.js";
 
 soundManager.preloadSound("FIRE_SOUND", "./assets/sounds/fire.mp3");
 soundManager.preloadSound("ASTEROID_HIT", "./assets/sounds/bangMedium.mp3");

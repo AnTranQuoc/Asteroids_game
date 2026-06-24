@@ -1,7 +1,7 @@
-import { CANVAS, CONTEXT } from "../canvasUtils.js";
-import { PROJECTILES } from "../gameConstants.js";
-import { OFF_WHITE } from "../gameConstants.js";
-import { getSelectedShipSkin, getSelectedGunSkin } from "../skins.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { PROJECTILES } from "../core/constants.js";
+import { OFF_WHITE } from "../core/constants.js";
+import { getSelectedShipSkin, getSelectedGunSkin } from "../systems/skins.js";
 
 class Player {
     constructor({ coordinates, velocity }) {

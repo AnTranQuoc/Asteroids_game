@@ -1,31 +1,31 @@
-import soundManager from "./javascript/classes/soundEffectsManager.js";
-import * as Music from "./javascript/sfxAndMusic.js"; // Don't remove. Disables music feature if removed.
-import { CANVAS, CONTEXT } from "./javascript/canvasUtils.js";
-import { drawFPS, calculateFPS } from "./javascript/fpsUtils.js";
-import { scoreBoard } from "./javascript/scoreUtils.js";
-import { drawStartScreenInfo, getStartButtons } from "./javascript/startScreenCanvas.js";
-import { drawRestartScreenInfo, getRestartButtons } from "./javascript/restartScreenCanvas.js";
-import { drawPauseMenuInfo, getPauseButtons } from "./javascript/pauseScreenCanvas.js";
-import { isInside } from "./javascript/ui.js";
-import { resetScore, increaseScore, score } from "./javascript/scoreUtils.js";
-import { drawShopScreen, getShopButtons } from "./javascript/shopScreen.js";
-import { buyOrEquipSkin } from "./javascript/skins.js";
-import { setLastEarned } from "./javascript/money.js";
-import { initCloud, cloudSubmitRun, cloud } from "./javascript/cloud.js";
+import soundManager from "./src/audio/soundManager.js";
+import * as Music from "./src/audio/sfxAndMusic.js"; // Don't remove. Disables music feature if removed.
+import { CANVAS, CONTEXT } from "./src/core/canvas.js";
+import { drawFPS, calculateFPS } from "./src/core/fps.js";
+import { scoreBoard } from "./src/systems/score.js";
+import { drawStartScreenInfo, getStartButtons } from "./src/screens/startScreen.js";
+import { drawRestartScreenInfo, getRestartButtons } from "./src/screens/restartScreen.js";
+import { drawPauseMenuInfo, getPauseButtons } from "./src/screens/pauseScreen.js";
+import { isInside } from "./src/ui/ui.js";
+import { resetScore, increaseScore, score } from "./src/systems/score.js";
+import { drawShopScreen, getShopButtons } from "./src/screens/shopScreen.js";
+import { buyOrEquipSkin } from "./src/systems/skins.js";
+import { setLastEarned } from "./src/systems/money.js";
+import { initCloud, cloudSubmitRun, cloud } from "./src/cloud/cloud.js";
 import {
   drawLeaderboardScreen,
   getLeaderboardButtons,
   openLeaderboard,
-} from "./javascript/leaderboardScreen.js";
-import { getPlayerName, setPlayerName } from "./javascript/leaderboard.js";
-import { drawNameScreen, getNameButtons } from "./javascript/nameScreen.js";
-import { drawMyRecordsScreen, getMyRecordsButtons } from "./javascript/myRecordsScreen.js";
-import { gameConfirm, gamePrompt, gameAlert, dialogOpen } from "./javascript/dialog.js";
-import { controlScheme } from "./javascript/controlScheme.js";
-import { enableCanvasWrap } from "./javascript/canvasWrap.js";
-import { player, Projectile } from "./javascript/classes/gameClasses.js";
-import { spawnAsteroids, splitAsteroid } from "./javascript/asteroidUtils.js";
-import { drawStarfield } from "./javascript/starfield.js";
+} from "./src/screens/leaderboardScreen.js";
+import { getPlayerName, setPlayerName } from "./src/cloud/leaderboard.js";
+import { drawNameScreen, getNameButtons } from "./src/screens/nameScreen.js";
+import { drawMyRecordsScreen, getMyRecordsButtons } from "./src/screens/myRecordsScreen.js";
+import { gameConfirm, gamePrompt, gameAlert, dialogOpen } from "./src/ui/dialog.js";
+import { controlScheme } from "./src/systems/controls.js";
+import { enableCanvasWrap } from "./src/core/canvasWrap.js";
+import { player, Projectile } from "./src/entities/entities.js";
+import { spawnAsteroids, splitAsteroid } from "./src/entities/asteroids.js";
+import { drawStarfield } from "./src/core/starfield.js";
 import {
   getDifficulty,
   setDifficulty,
@@ -34,7 +34,7 @@ import {
   updateSpeedRamp,
   resetSpeedRamp,
   SPEED_RAMP_MAX,
-} from "./javascript/difficulty.js";
+} from "./src/systems/difficulty.js";
 import {
   POWERUPS,
   PowerUp,
@@ -42,11 +42,11 @@ import {
   POWERUP_DURATION,
   randomPowerUpType,
   drawIcon,
-} from "./javascript/powerUps.js";
+} from "./src/entities/powerUps.js";
 import {
   renderParticles,
   updateParticles,
-} from "./javascript/explosionParticles.js";
+} from "./src/entities/particles.js";
 import {
   ASTEROIDS,
   MAX_FPS,
@@ -56,7 +56,7 @@ import {
   KEYPRESS,
   MOUSE,
   GREY,
-} from "./javascript/gameConstants.js";
+} from "./src/core/constants.js";
 
 export let gameOver = false;
 export let gameStarted = false;

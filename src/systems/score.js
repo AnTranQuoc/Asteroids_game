@@ -1,6 +1,6 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
 import { getDifficulty } from "./difficulty.js";
-import { cloud } from "./cloud.js";
+import { cloud } from "../cloud/cloud.js";
 
 export let score = 0;
 

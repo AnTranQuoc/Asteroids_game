@@ -1,6 +1,6 @@
-import { CANVAS, CONTEXT } from "./canvasUtils.js";
-import { OFF_WHITE, GREY } from "./gameConstants.js";
-import { drawButton } from "./ui.js";
+import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { OFF_WHITE, GREY } from "../core/constants.js";
+import { drawButton } from "../ui/ui.js";
 
 export function getNameButtons() {
   const cx = CANVAS.width / 2;

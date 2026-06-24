@@ -1,14 +1,14 @@
-import { Asteroid } from "./classes/gameClasses.js";
-import { gameOver, gameStarted } from "../index.js";
-import { CANVAS } from "./canvasUtils.js";
-import { getDifficulty, runtime } from "./difficulty.js";
+import { Asteroid } from "./entities.js";
+import { gameOver, gameStarted } from "../../index.js";
+import { CANVAS } from "../core/canvas.js";
+import { getDifficulty, runtime } from "../systems/difficulty.js";
 import {
   ASTEROIDS,
   ASTEROID_MIN_RADIUS,
   ASTEROID_MAX_RADIUS,
   ASTEROID_SPLIT_THRESHOLD,
   ASTEROID_MAX_SPEED,
-} from "./gameConstants.js";
+} from "../core/constants.js";
 
 export function getAsteroidSpawnData() {
   // Spawn location of asteroids (just outside the canvas bounds).

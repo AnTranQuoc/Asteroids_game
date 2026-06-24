@@ -1,6 +1,6 @@
-import { player } from "./classes/gameClasses.js";
-import { KEYPRESS, MOUSE } from "./gameConstants.js";
-import { MOVEMENT_SPEED, DECELERATION_RATE } from "./gameConstants.js";
+import { player } from "../entities/entities.js";
+import { KEYPRESS, MOUSE } from "../core/constants.js";
+import { MOVEMENT_SPEED, DECELERATION_RATE } from "../core/constants.js";
 
 export function controlScheme() {
   // The nose of the ship always points toward the mouse cursor.

@@ -1,4 +1,4 @@
-import { cloud, cloudPurchaseSkin } from "./cloud.js";
+import { cloud, cloudPurchaseSkin } from "../cloud/cloud.js";
 
 ///// Ship hull designs (drawn in local space, nose pointing toward +x) /////
 function drawClassicShip(ctx) {
