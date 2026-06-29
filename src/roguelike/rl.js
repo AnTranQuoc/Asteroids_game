@@ -122,6 +122,9 @@ function startRun(now) {
   player.velocity.x = 0;
   player.velocity.y = 0;
   player.shield = false;
+  player.shieldRechargeAt = 0;
+  player.phaseUntil = 0;
+  player.phaseCooldownUntil = 0;
   player.rapidFireUntil = 0;
   player.spreadUntil = 0;
   player.invulnUntil = 0;
@@ -183,8 +186,10 @@ function _spawnXPOrb(coords, amount, now) {
 
 function _updateXPOrbs(now) {
   const XP_ORB_LIFETIME = 10000;
-  const pulls = magnetPullsXP();
-  const pickupR = 32 * magnetRadiusMult();
+  const mag = passiveLevel("magnetPull");
+  const pulls = mag > 0;
+  const pullR = mag * 140;
+  const pickupR = 32 * (1 + kitState.stats.pickup * 0.4);
 
   for (let i = XPORBS.length - 1; i >= 0; i--) {
     const orb = XPORBS[i];
@@ -195,7 +200,7 @@ function _updateXPOrbs(now) {
       continue;
     }
 
-    if (pulls) {
+    if (pulls && Math.hypot(player.coordinates.x - orb.x, player.coordinates.y - orb.y) < pullR) {
       const dx = player.coordinates.x - orb.x;
       const dy = player.coordinates.y - orb.y;
       const dist = Math.hypot(dx, dy) || 1;
@@ -462,7 +467,7 @@ function _rlDetectProjectileHits(now) {
 // ── Player-asteroid collision ─────────────────────────────────────────────────
 function _rlDetectPlayerHit(now) {
   if (now < player.invulnUntil) return;
-  if (now < rlState.ghostUntil) return;
+  if (now < (player.phaseUntil || 0)) return;
 
   const verts = player.getVertices();
   for (let i = ASTEROIDS.length - 1; i >= 0; i--) {
@@ -519,7 +524,7 @@ function _rlDetectBossHits(now) {
     }
   }
 
-  if (now < player.invulnUntil || now < rlState.ghostUntil) return;
+  if (now < player.invulnUntil || now < (player.phaseUntil || 0)) return;
   if (boss.collidesWithPlayer(player.coordinates.x, player.coordinates.y)) {
     _applyPlayerDamage(now, { x: player.coordinates.x, y: player.coordinates.y }, 24);
   }
@@ -620,7 +625,7 @@ function _rlDetectEnemyHits(now) {
 // ── Enemy/enemy-bullet vs player ──────────────────────────────────────────────
 // Returns true if the run ended.
 function _rlDetectEnemyPlayerHits(now) {
-  if (now < player.invulnUntil || now < rlState.ghostUntil) return false;
+  if (now < player.invulnUntil || now < (player.phaseUntil || 0)) return false;
 
   for (let i = ENEMIES.length - 1; i >= 0; i--) {
     const e = ENEMIES[i];
@@ -936,7 +941,7 @@ function _playingFrame(now, isBoss) {
   _drawOrbitRing(now);
   _updateXPOrbs(now);
 
-  if (now < rlState.ghostUntil) {
+  if (now < (player.phaseUntil || 0)) {
     CONTEXT.save();
     CONTEXT.globalAlpha = 0.35 + 0.2 * Math.sin(now / 80);
     CONTEXT.translate(player.coordinates.x, player.coordinates.y);
