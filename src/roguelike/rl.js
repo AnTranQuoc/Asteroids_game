@@ -15,7 +15,7 @@ import { enableCanvasWrap } from "../core/canvasWrap.js";
 import soundManager from "../audio/soundManager.js";
 
 import { rlState, resetRlState, xpRequired, gainXP, addScore, getStackCount, addUpgradeStack } from "./rlState.js";
-import { drawThreeCards, fireIntervalMs, moveSpeedMult, bulletRadiusMult, xpMultiplier, shieldRechargeMs, pierceStacks, ricochetBounces, forkShotShards, magnetRadiusMult, orbitRingCount, orbitRingFastSpin, novaBurstStacks, ghostShipDurationMs } from "./rlUpgrades.js";
+import { drawThreeCards, fireIntervalMs, moveSpeedMult, bulletRadiusMult, xpMultiplier, shieldRechargeMs, pierceStacks, ricochetBounces, forkShotShards, magnetRadiusMult, magnetPullsXP, orbitRingCount, orbitRingFastSpin, novaBurstStacks, ghostShipDurationMs } from "./rlUpgrades.js";
 import { Boss } from "./rlBoss.js";
 import {
   drawXPStrip, drawLevelBadge, drawRLScore, drawBossHPBar,
@@ -32,6 +32,7 @@ let boss = null;
 let runBanked = false;
 
 const EXPLOSIONS = [];
+const XPORBS = [];
 const RL_MAX_ASTEROIDS = 30;
 const RL_SPAWN_INTERVAL = 900;
 const RL_SPEED_RAMP_RATE = 0.012;
@@ -55,6 +56,7 @@ function _clearRunState() {
   PROJECTILES.length = 0;
   POWERUPS.length = 0;
   EXPLOSIONS.length = 0;
+  XPORBS.length = 0;
   boss = null;
   upgradeCards = [];
   hoveredCardIndex = -1;
@@ -109,6 +111,52 @@ function xpForRadius(r) {
   if (r >= 60) return 25;
   if (r >= 30) return 15;
   return 8;
+}
+
+// ── XP orb pickups ────────────────────────────────────────────────────────────
+function _spawnXPOrb(coords, amount, now) {
+  XPORBS.push({ x: coords.x, y: coords.y, amount, spawnedAt: now });
+}
+
+function _updateXPOrbs(now) {
+  const XP_ORB_LIFETIME = 10000;
+  const pulls = magnetPullsXP();
+  const pickupR = 20 * magnetRadiusMult();
+
+  for (let i = XPORBS.length - 1; i >= 0; i--) {
+    const orb = XPORBS[i];
+    const elapsed = now - orb.spawnedAt;
+
+    if (elapsed >= XP_ORB_LIFETIME) {
+      XPORBS.splice(i, 1);
+      continue;
+    }
+
+    if (pulls) {
+      const dx = player.coordinates.x - orb.x;
+      const dy = player.coordinates.y - orb.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      orb.x += (dx / dist) * Math.min(8, 250 / dist);
+      orb.y += (dy / dist) * Math.min(8, 250 / dist);
+    }
+
+    if (Math.hypot(player.coordinates.x - orb.x, player.coordinates.y - orb.y) < pickupR) {
+      gainXP(orb.amount);
+      XPORBS.splice(i, 1);
+      _checkLevelUp(now);
+      continue;
+    }
+
+    const alpha = elapsed > 8000 ? 1 - (elapsed - 8000) / 2000 : 1;
+    CONTEXT.save();
+    CONTEXT.beginPath();
+    CONTEXT.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
+    CONTEXT.fillStyle = `rgba(120, 200, 255, ${alpha * 0.9})`;
+    CONTEXT.shadowColor = "#78c8ff";
+    CONTEXT.shadowBlur = 10;
+    CONTEXT.fill();
+    CONTEXT.restore();
+  }
 }
 
 // ── Asteroid spawning ─────────────────────────────────────────────────────────
@@ -203,7 +251,7 @@ function _rlDetectProjectileHits(now) {
       const scoreGain = Math.round(15 * (1 - ast.radius / 450));
       addScore(scoreGain);
       const xpGain = xpForRadius(ast.radius) * xpMultiplier();
-      gainXP(xpGain);
+      _spawnXPOrb({ ...ast.coordinates }, xpGain, now);
       rlState.asteroidsKilled++;
 
       soundManager.playSound("ASTEROID_HIT", 0.1);
@@ -239,10 +287,8 @@ function _rlDetectProjectileHits(now) {
             }));
           }
         }
-        _checkLevelUp(now);
-        // Piercing bullet continues — don't break inner loop
+        // XP deferred to orb pickup — no _checkLevelUp here
       } else {
-        _checkLevelUp(now);
         PROJECTILES.splice(i, 1);
         break;
       }
@@ -434,12 +480,11 @@ function _drawOrbitRing(now) {
         _spawnExplosion(ast.coordinates, ast.radius);
         soundManager.playSound("ASTEROID_HIT", 0.08);
         const xpGain = xpForRadius(ast.radius) * xpMultiplier();
-        gainXP(xpGain);
+        _spawnXPOrb({ ...ast.coordinates }, xpGain, now);
         addScore(Math.round(15 * (1 - ast.radius / 450)));
         rlState.asteroidsKilled++;
         ASTEROIDS.splice(j, 1);
         Array.prototype.push.apply(ASTEROIDS, children);
-        _checkLevelUp(now);
         break;
       }
     }
@@ -559,6 +604,7 @@ function _playingFrame(now, isBoss) {
   _rlUpdatePowerUps(now);
   _updateExplosions();
   _drawOrbitRing(now);
+  _updateXPOrbs(now);
 
   if (rlState.shieldRechargeAt > 0 && now >= rlState.shieldRechargeAt) {
     player.shield = true;
