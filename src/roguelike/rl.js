@@ -957,6 +957,8 @@ function _playingFrame(now, isBoss) {
     CONTEXT.restore();
   }
 
+  drawKit(_buildCtx(now), now);
+
   CONTEXT.restore();
 
   if (rlState.shieldRechargeAt > 0 && now >= rlState.shieldRechargeAt) {
