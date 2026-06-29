@@ -129,7 +129,7 @@ function _spawnXPOrb(coords, amount, now) {
 function _updateXPOrbs(now) {
   const XP_ORB_LIFETIME = 10000;
   const pulls = magnetPullsXP();
-  const pickupR = 14 * magnetRadiusMult();
+  const pickupR = 32 * magnetRadiusMult();
 
   for (let i = XPORBS.length - 1; i >= 0; i--) {
     const orb = XPORBS[i];

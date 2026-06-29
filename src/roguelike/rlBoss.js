@@ -8,7 +8,7 @@ const PATTERN_UNLOCK = [0, 0, 1, 1, 2, 3];
 export class Boss {
   constructor(bossIndex) {
     this.index = bossIndex;
-    this.hp = 200 + bossIndex * 150;
+    this.hp = 120 + bossIndex * 80;
     this.maxHp = this.hp;
     this.x = CANVAS.width / 2;
     this.y = -90;
