@@ -33,6 +33,7 @@ let runBanked = false;
 
 const EXPLOSIONS = [];
 const XPORBS = [];
+const ORBIT_COOLDOWNS = [];
 const RL_MAX_ASTEROIDS = 30;
 const RL_SPAWN_INTERVAL = 900;
 const RL_SPEED_RAMP_RATE = 0.012;
@@ -57,6 +58,7 @@ function _clearRunState() {
   POWERUPS.length = 0;
   EXPLOSIONS.length = 0;
   XPORBS.length = 0;
+  ORBIT_COOLDOWNS.length = 0;
   boss = null;
   upgradeCards = [];
   hoveredCardIndex = -1;
@@ -305,6 +307,17 @@ function _rlDetectProjectileHits(now) {
           }
         }
         // XP deferred to orb pickup — no _checkLevelUp here
+      } else if (proj.bouncesLeft > 0) {
+        // Ricochet: reflect off the asteroid's surface normal
+        const nx = proj.coordinates.x - ast.coordinates.x;
+        const ny = proj.coordinates.y - ast.coordinates.y;
+        const len = Math.hypot(nx, ny) || 1;
+        const nnx = nx / len, nny = ny / len;
+        const dot = proj.velocity.x * nnx + proj.velocity.y * nny;
+        proj.velocity.x -= 2 * dot * nnx;
+        proj.velocity.y -= 2 * dot * nny;
+        proj.bouncesLeft--;
+        break;
       } else {
         PROJECTILES.splice(i, 1);
         break;
@@ -334,8 +347,9 @@ function _rlDetectPlayerHit(now) {
       }
     } else {
       const ghostDur = ghostShipDurationMs();
-      if (ghostDur > 0) {
+      if (ghostDur > 0 && now >= rlState.ghostCooldownUntil) {
         rlState.ghostUntil = now + ghostDur;
+        rlState.ghostCooldownUntil = now + 20000;
         soundManager.playSound("ASTEROID_HIT", 0.1);
         return;
       }
@@ -400,8 +414,9 @@ function _rlDetectBossHits(now) {
       );
     } else {
       const ghostDur = ghostShipDurationMs();
-      if (ghostDur > 0) {
+      if (ghostDur > 0 && now >= rlState.ghostCooldownUntil) {
         rlState.ghostUntil = now + ghostDur;
+        rlState.ghostCooldownUntil = now + 20000;
         boss.bullets = boss.bullets.filter(
           (b) => Math.hypot(b.x - player.coordinates.x, b.y - player.coordinates.y) >= 21
         );
@@ -481,28 +496,38 @@ function _drawOrbitRing(now) {
     const ox = player.coordinates.x + Math.cos(angle) * orbitR;
     const oy = player.coordinates.y + Math.sin(angle) * orbitR;
 
-    CONTEXT.save();
-    CONTEXT.beginPath();
-    CONTEXT.arc(ox, oy, orbR, 0, Math.PI * 2);
-    CONTEXT.fillStyle = "rgba(255,215,80,0.85)";
-    CONTEXT.shadowColor = "#ffd750";
-    CONTEXT.shadowBlur = 12;
-    CONTEXT.fill();
-    CONTEXT.restore();
+    const cooldownExpiry = ORBIT_COOLDOWNS[i] || 0;
+    const onCooldown = now < cooldownExpiry;
+    // Flicker: show orb on alternating 80ms ticks while cooling down
+    const visible = !onCooldown || Math.floor(now / 80) % 2 === 0;
 
-    for (let j = ASTEROIDS.length - 1; j >= 0; j--) {
-      const ast = ASTEROIDS[j];
-      if (Math.hypot(ox - ast.coordinates.x, oy - ast.coordinates.y) < orbR + ast.radius) {
-        const children = splitAsteroid(ast);
-        _spawnExplosion(ast.coordinates, ast.radius);
-        soundManager.playSound("ASTEROID_HIT", 0.08);
-        const xpGain = xpForRadius(ast.radius) * xpMultiplier();
-        _spawnXPOrb({ ...ast.coordinates }, xpGain, now);
-        addScore(Math.round(15 * (1 - ast.radius / 450)));
-        rlState.asteroidsKilled++;
-        ASTEROIDS.splice(j, 1);
-        Array.prototype.push.apply(ASTEROIDS, children);
-        break;
+    if (visible) {
+      CONTEXT.save();
+      CONTEXT.beginPath();
+      CONTEXT.arc(ox, oy, orbR, 0, Math.PI * 2);
+      CONTEXT.fillStyle = onCooldown ? "rgba(180,180,220,0.45)" : "rgba(255,215,80,0.85)";
+      CONTEXT.shadowColor = onCooldown ? "#8888cc" : "#ffd750";
+      CONTEXT.shadowBlur = 12;
+      CONTEXT.fill();
+      CONTEXT.restore();
+    }
+
+    if (!onCooldown) {
+      for (let j = ASTEROIDS.length - 1; j >= 0; j--) {
+        const ast = ASTEROIDS[j];
+        if (Math.hypot(ox - ast.coordinates.x, oy - ast.coordinates.y) < orbR + ast.radius) {
+          const children = splitAsteroid(ast);
+          _spawnExplosion(ast.coordinates, ast.radius);
+          soundManager.playSound("ASTEROID_HIT", 0.08);
+          const xpGain = xpForRadius(ast.radius) * xpMultiplier();
+          _spawnXPOrb({ ...ast.coordinates }, xpGain, now);
+          addScore(Math.round(15 * (1 - ast.radius / 450)));
+          rlState.asteroidsKilled++;
+          ASTEROIDS.splice(j, 1);
+          Array.prototype.push.apply(ASTEROIDS, children);
+          ORBIT_COOLDOWNS[i] = now + 3000;
+          break;
+        }
       }
     }
   }
@@ -573,6 +598,33 @@ function _triggerDeath(now) {
   _clearRunState();
 }
 
+// ── Ghost ship cooldown indicator ─────────────────────────────────────────────
+function _drawGhostIndicator(now) {
+  const active = now < rlState.ghostUntil;
+  const onCooldown = !active && now < rlState.ghostCooldownUntil;
+  const x = CANVAS.width - 14;
+  const y = 80;
+
+  CONTEXT.save();
+  CONTEXT.textAlign = "right";
+  CONTEXT.font = "13px monospace";
+
+  if (active) {
+    CONTEXT.fillStyle = `rgba(100,200,255,${0.75 + 0.25 * Math.sin(now / 90)})`;
+    CONTEXT.shadowColor = "#64c8ff";
+    CONTEXT.shadowBlur = 8;
+    CONTEXT.fillText("GHOST ACTIVE", x, y);
+  } else if (onCooldown) {
+    const secs = Math.ceil((rlState.ghostCooldownUntil - now) / 1000);
+    CONTEXT.fillStyle = "rgba(150,150,180,0.85)";
+    CONTEXT.fillText(`GHOST ${secs}s`, x, y);
+  } else {
+    CONTEXT.fillStyle = "rgba(100,220,140,0.85)";
+    CONTEXT.fillText("GHOST READY", x, y);
+  }
+  CONTEXT.restore();
+}
+
 // ── Main playing frame ────────────────────────────────────────────────────────
 function _playingFrame(now, isBoss) {
   CONTEXT.fillStyle = GREY;
@@ -632,6 +684,7 @@ function _playingFrame(now, isBoss) {
   drawLevelBadge();
   drawRLScore();
   if (isBoss && boss) drawBossHPBar(boss);
+  if (getStackCount("ghostShip") > 0) _drawGhostIndicator(now);
 
   if (now < rlState.ghostUntil) {
     CONTEXT.save();

@@ -15,9 +15,10 @@ export const rlState = {
   lastShotTime: 0,
   speedRamp: 1.0,
   // upgrade effects
-  orbitAngle: 0,       // base angle for orbit ring orbs
-  ghostUntil: 0,       // ms timestamp until ghost ship phase ends
-  shieldRechargeAt: 0, // ms timestamp when shield restores (0 = not pending)
+  orbitAngle: 0,           // base angle for orbit ring orbs
+  ghostUntil: 0,           // ms timestamp until ghost ship phase ends
+  ghostCooldownUntil: 0,   // ms timestamp when ghost ship can trigger again
+  shieldRechargeAt: 0,     // ms timestamp when shield restores (0 = not pending)
   // Map<upgradeId, stackCount>
   upgrades: new Map(),
 };
@@ -38,6 +39,7 @@ export function resetRlState(now) {
   rlState.speedRamp = 1.0;
   rlState.orbitAngle = 0;
   rlState.ghostUntil = 0;
+  rlState.ghostCooldownUntil = 0;
   rlState.shieldRechargeAt = 0;
   rlState.upgrades = new Map();
 }
