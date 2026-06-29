@@ -1,18 +1,20 @@
 // src/roguelike/rlBoss.js
-import { CANVAS, CONTEXT } from "../core/canvas.js";
+import { CONTEXT } from "../core/canvas.js";
 
 const PATTERN_COUNT = 6;
 // Boss index at which each pattern first unlocks (ring=0, spiral=0, aimed=1, scatter=1, cross=2, homing=3)
 const PATTERN_UNLOCK = [0, 0, 1, 1, 2, 3];
 
 export class Boss {
-  constructor(bossIndex) {
+  constructor(bossIndex, spawnX, spawnY, worldW, worldH) {
     this.index = bossIndex;
     this.hp = 120 + bossIndex * 80;
     this.maxHp = this.hp;
-    this.x = CANVAS.width / 2;
-    this.y = -90;
-    this.targetY = 130;
+    this.worldW = worldW;
+    this.worldH = worldH;
+    this.x = spawnX;
+    this.y = spawnY - 220;
+    this.targetY = spawnY;
     this.phase = "entering"; // entering | phase1 | phase2
 
     const bulletSpeed = 3.5 * (1 + bossIndex * 0.1);
@@ -27,6 +29,9 @@ export class Boss {
     }));
     this.orbitRadius = 120;
     this.orbitSpeed = 0.008 + bossIndex * 0.001;
+
+    // Slow pursuit: looms toward the player but is easy to outmaneuver.
+    this.chaseSpeed = 0.6 + bossIndex * 0.05;
 
     // Boss bullets (own array)
     this.bullets = [];
@@ -57,6 +62,15 @@ export class Boss {
       }
       return;
     }
+
+    // Chase the player (clamped to the arena).
+    const cdx = playerX - this.x;
+    const cdy = playerY - this.y;
+    const cdist = Math.hypot(cdx, cdy) || 1;
+    this.x += (cdx / cdist) * this.chaseSpeed;
+    this.y += (cdy / cdist) * this.chaseSpeed;
+    this.x = Math.max(60, Math.min(this.worldW - 60, this.x));
+    this.y = Math.max(60, Math.min(this.worldH - 60, this.y));
 
     // Orbit minions
     for (const m of this.minions) {
@@ -94,7 +108,7 @@ export class Boss {
           b.vy = (b.vy / spd) * this.bulletSpeed;
         }
       }
-      if (b.x < -30 || b.x > CANVAS.width + 30 || b.y < -30 || b.y > CANVAS.height + 30) {
+      if (b.x < -30 || b.x > this.worldW + 30 || b.y < -30 || b.y > this.worldH + 30) {
         this.bullets.splice(i, 1);
       }
     }

@@ -14,6 +14,12 @@ export const rlState = {
   lastSpawnTime: 0,
   lastShotTime: 0,
   speedRamp: 1.0,
+  stageStartTime: 0,
+  bossSpawned: false,
+  pauseStartedAt: 0,
+  nextWaveIndex: 0,        // index of the next wave to fire
+  waveFlashUntil: 0,       // ms until the "WAVE N" banner fades out
+  waveFlashLabel: "",      // label shown by the wave banner
   // upgrade effects
   orbitAngle: 0,           // base angle for orbit ring orbs
   ghostUntil: 0,           // ms timestamp until ghost ship phase ends
@@ -37,6 +43,12 @@ export function resetRlState(now) {
   rlState.lastSpawnTime = now;
   rlState.lastShotTime = now;
   rlState.speedRamp = 1.0;
+  rlState.stageStartTime = now;
+  rlState.bossSpawned = false;
+  rlState.pauseStartedAt = 0;
+  rlState.nextWaveIndex = 0;
+  rlState.waveFlashUntil = 0;
+  rlState.waveFlashLabel = "";
   rlState.orbitAngle = 0;
   rlState.ghostUntil = 0;
   rlState.ghostCooldownUntil = 0;

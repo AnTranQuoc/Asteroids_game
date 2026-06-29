@@ -2,7 +2,7 @@
 import { CANVAS, CONTEXT } from "../core/canvas.js";
 import { GREY, ASTEROIDS, PROJECTILES, MOUSE, KEYPRESS, ASTEROID_MIN_RADIUS, ASTEROID_MAX_RADIUS, ASTEROID_MAX_SPEED, ASTEROID_SPLIT_THRESHOLD } from "../core/constants.js";
 import { player, Projectile, Asteroid } from "../entities/entities.js";
-import { splitAsteroid, getAsteroidSpawnData } from "../entities/asteroids.js";
+import { splitAsteroid } from "../entities/asteroids.js";
 import { POWERUPS } from "../entities/powerUps.js";
 import { renderParticles, updateParticles } from "../entities/particles.js";
 import { drawStarfield } from "../core/starfield.js";
@@ -11,17 +11,18 @@ import { dialogOpen } from "../ui/dialog.js";
 import { cloudSubmitRun, cloud } from "../cloud/cloud.js";
 import { setLastEarned } from "../systems/money.js";
 import { controlScheme } from "../systems/controls.js";
-import { enableCanvasWrap } from "../core/canvasWrap.js";
 import soundManager from "../audio/soundManager.js";
 
 import { rlState, resetRlState, xpRequired, gainXP, addScore, getStackCount, addUpgradeStack } from "./rlState.js";
 import { drawThreeCards, fireIntervalMs, moveSpeedMult, bulletRadiusMult, xpMultiplier, shieldRechargeMs, pierceStacks, ricochetBounces, forkShotShards, magnetRadiusMult, magnetPullsXP, orbitRingCount, orbitRingFastSpin, novaBurstStacks, ghostShipDurationMs } from "./rlUpgrades.js";
 import { Boss } from "./rlBoss.js";
+import { ENEMIES, ENEMY_BULLETS, clearEnemies, countType, spawnChaser, spawnHunter, updateEnemies, drawEnemies } from "./rlEnemies.js";
 import {
   drawXPStrip, drawLevelBadge, drawRLScore, drawBossHPBar,
   drawUpgradeOverlay, getUpgradeCardButtons,
   drawRLMenu, getRLMenuButtons,
   drawRLEnd, getRLEndButtons,
+  drawBossCountdown, drawRLWin, getRLWinButtons,
 } from "./rlRender.js";
 
 // ── Module-level state ────────────────────────────────────────────────────────
@@ -34,10 +35,48 @@ let runBanked = false;
 const EXPLOSIONS = [];
 const XPORBS = [];
 const ORBIT_COOLDOWNS = [];
-const RL_MAX_ASTEROIDS = 30;
-const RL_SPAWN_INTERVAL = 900;
 const RL_SPEED_RAMP_RATE = 0.012;
 const RL_SPEED_RAMP_MAX = 2.2;
+const RL_MOVE_SPEED_FACTOR = 0.85; // ~6 px/frame vs single-player's 7 (MOVEMENT_SPEED).
+
+const WORLD_SCREENS = 3;
+let WORLD_W = 0;
+let WORLD_H = 0;
+let camX = 0;
+let camY = 0;
+
+const STAGE_DURATION_MS = 240000;       // 4 min to boss
+const RL_SPAWN_INTERVAL_START = 2000;
+const RL_SPAWN_INTERVAL_END = 450;
+const RL_MAX_ASTEROIDS_START = 6;
+const RL_MAX_ASTEROIDS_END = 30;
+
+// Enemy population caps (live count, not per-wave).
+const MAX_CHASERS = 6;
+const MAX_HUNTERS = 4;
+
+// Discrete waves layered on top of the steady asteroid trickle. `at` is elapsed
+// stage time in ms (uses the pause-adjusted stageStartTime). Rocks here are a
+// surge that ignores the steady asteroid cap; enemy spawns respect the caps above.
+const WAVES = [
+  { at: 40000,  rocks: 8,  chasers: 0, hunters: 0, label: "WAVE 1" },
+  { at: 80000,  rocks: 6,  chasers: 4, hunters: 0, label: "WAVE 2" },
+  { at: 120000, rocks: 8,  chasers: 5, hunters: 0, label: "WAVE 3" },
+  { at: 160000, rocks: 4,  chasers: 3, hunters: 3, label: "WAVE 4" },
+  { at: 200000, rocks: 10, chasers: 5, hunters: 4, label: "WAVE 5" },
+];
+
+function _lerp(a, b, t) { return a + (b - a) * t; }
+
+function _updateCamera() {
+  camX = Math.max(0, Math.min(WORLD_W - CANVAS.width,  player.coordinates.x - CANVAS.width / 2));
+  camY = Math.max(0, Math.min(WORLD_H - CANVAS.height, player.coordinates.y - CANVAS.height / 2));
+}
+
+function _clampPlayerToWorld() {
+  player.coordinates.x = Math.max(16, Math.min(WORLD_W - 16, player.coordinates.x));
+  player.coordinates.y = Math.max(16, Math.min(WORLD_H - 16, player.coordinates.y));
+}
 
 export function rlActive() { return open; }
 
@@ -59,6 +98,7 @@ function _clearRunState() {
   EXPLOSIONS.length = 0;
   XPORBS.length = 0;
   ORBIT_COOLDOWNS.length = 0;
+  clearEnemies();
   boss = null;
   upgradeCards = [];
   hoveredCardIndex = -1;
@@ -68,8 +108,10 @@ function startRun(now) {
   _clearRunState();
   resetRlState(now);
   runBanked = false;
-  player.coordinates.x = CANVAS.width / 2;
-  player.coordinates.y = CANVAS.height / 2;
+  WORLD_W = CANVAS.width * WORLD_SCREENS;
+  WORLD_H = CANVAS.height * WORLD_SCREENS;
+  player.coordinates.x = WORLD_W / 2;
+  player.coordinates.y = WORLD_H / 2;
   player.velocity.x = 0;
   player.velocity.y = 0;
   player.shield = false;
@@ -90,6 +132,7 @@ function bankRun() {
 export function drawRL(now) {
   if (rlState.screen === "menu") { drawRLMenu(); return; }
   if (rlState.screen === "end")  { drawRLEnd(cloud.bestScores["ROGUELIKE"], now); return; }
+  if (rlState.screen === "win")  { drawRLWin(cloud.bestScores["ROGUELIKE"], now); return; }
   if (rlState.screen === "upgrade-pick") { _drawUpgradePick(); return; }
   if (rlState.screen === "boss")    { _playingFrame(now, true); return; }
   if (rlState.screen === "playing") { _playingFrame(now, false); return; }
@@ -99,9 +142,14 @@ function _drawUpgradePick() {
   CONTEXT.fillStyle = GREY;
   CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
   drawStarfield();
+
+  CONTEXT.save();
+  CONTEXT.translate(-camX, -camY);
   for (const a of ASTEROIDS) a.drawAsteroid();
   player.drawPlayer();
   for (const p of PROJECTILES) p.drawProjectile();
+  CONTEXT.restore();
+
   drawXPStrip(false);
   drawLevelBadge();
   drawRLScore();
@@ -152,11 +200,8 @@ function _updateXPOrbs(now) {
     orb.y += orb.vy;
     // Gentle drag so orbs slow down and settle
     if (!pulls) { orb.vx *= 0.96; orb.vy *= 0.96; }
-    // Canvas wrap
-    if (orb.x < 0) orb.x += CANVAS.width;
-    else if (orb.x > CANVAS.width) orb.x -= CANVAS.width;
-    if (orb.y < 0) orb.y += CANVAS.height;
-    else if (orb.y > CANVAS.height) orb.y -= CANVAS.height;
+    orb.x = Math.max(0, Math.min(WORLD_W, orb.x));
+    orb.y = Math.max(0, Math.min(WORLD_H, orb.y));
 
     if (elapsed >= 150 && Math.hypot(player.coordinates.x - orb.x, player.coordinates.y - orb.y) < pickupR) {
       gainXP(orb.amount);
@@ -178,17 +223,43 @@ function _updateXPOrbs(now) {
   }
 }
 
+// ── Off-camera spawn point (just outside the view, clamped into the world) ─────
+function _offCameraSpawnPoint(margin) {
+  const side = Math.floor(Math.random() * 4);
+  let x, y;
+  if (side === 0)      { x = camX - margin;                 y = camY + Math.random() * CANVAS.height; }
+  else if (side === 1) { x = camX + CANVAS.width + margin;  y = camY + Math.random() * CANVAS.height; }
+  else if (side === 2) { y = camY - margin;                 x = camX + Math.random() * CANVAS.width; }
+  else                 { y = camY + CANVAS.height + margin; x = camX + Math.random() * CANVAS.width; }
+  x = Math.max(margin, Math.min(WORLD_W - margin, x));
+  y = Math.max(margin, Math.min(WORLD_H - margin, y));
+  return { x, y };
+}
+
 // ── Asteroid spawning ─────────────────────────────────────────────────────────
 function _spawnRLAsteroid() {
-  if (ASTEROIDS.length >= RL_MAX_ASTEROIDS) return;
-  const { x, y } = getAsteroidSpawnData();
   const radius = ASTEROID_MIN_RADIUS + Math.random() * (ASTEROID_MAX_RADIUS - ASTEROID_MIN_RADIUS);
-  const targetX = CANVAS.width / 2 + (Math.random() - 0.5) * CANVAS.width * 0.6;
-  const targetY = CANVAS.height / 2 + (Math.random() - 0.5) * CANVAS.height * 0.6;
-  const angle = Math.atan2(targetY - y, targetX - x);
+
+  const { x, y } = _offCameraSpawnPoint(radius + 20);
+
+  const angle = Math.atan2(player.coordinates.y - y, player.coordinates.x - x) + (Math.random() - 0.5) * 0.8;
   const sizeFactor = Math.min(2.0, Math.max(0.7, 40 / radius));
   const speed = Math.min(ASTEROID_MAX_SPEED, (1.8 + Math.random() * 1.6) * sizeFactor * rlState.speedRamp);
   ASTEROIDS.push(new Asteroid({ coordinates: { x, y }, velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed }, radius }));
+}
+
+// ── RL-local asteroid step (bounces off world walls) ─────────────────────────
+function _rlUpdateAsteroid(a) {
+  a.drawAsteroid();
+  a.coordinates.x += a.velocity.x;
+  a.coordinates.y += a.velocity.y;
+  a.rotation += a.rotationSpeed;
+
+  const r = a.radius;
+  if (a.coordinates.x < r)                { a.coordinates.x = r;            a.velocity.x = Math.abs(a.velocity.x); }
+  else if (a.coordinates.x > WORLD_W - r) { a.coordinates.x = WORLD_W - r; a.velocity.x = -Math.abs(a.velocity.x); }
+  if (a.coordinates.y < r)                { a.coordinates.y = r;            a.velocity.y = Math.abs(a.velocity.y); }
+  else if (a.coordinates.y > WORLD_H - r) { a.coordinates.y = WORLD_H - r; a.velocity.y = -Math.abs(a.velocity.y); }
 }
 
 // ── Projectile firing ─────────────────────────────────────────────────────────
@@ -238,22 +309,23 @@ function _rlUpdateProjectiles() {
 
     if (p.bouncesLeft > 0) {
       let bounced = false;
-      if (p.coordinates.x < 0 || p.coordinates.x > CANVAS.width) {
+      if (p.coordinates.x < 0 || p.coordinates.x > WORLD_W) {
         p.velocity.x *= -1;
-        p.coordinates.x = Math.max(0, Math.min(CANVAS.width, p.coordinates.x));
+        p.coordinates.x = Math.max(0, Math.min(WORLD_W, p.coordinates.x));
         bounced = true;
       }
-      if (p.coordinates.y < 0 || p.coordinates.y > CANVAS.height) {
+      if (p.coordinates.y < 0 || p.coordinates.y > WORLD_H) {
         p.velocity.y *= -1;
-        p.coordinates.y = Math.max(0, Math.min(CANVAS.height, p.coordinates.y));
+        p.coordinates.y = Math.max(0, Math.min(WORLD_H, p.coordinates.y));
         bounced = true;
       }
       if (bounced) p.bouncesLeft--;
     } else {
-      if (p.coordinates.x < 0) p.coordinates.x = CANVAS.width;
-      else if (p.coordinates.x > CANVAS.width) p.coordinates.x = 0;
-      if (p.coordinates.y < 0) p.coordinates.y = CANVAS.height;
-      else if (p.coordinates.y > CANVAS.height) p.coordinates.y = 0;
+      if (p.coordinates.x < 0 || p.coordinates.x > WORLD_W ||
+          p.coordinates.y < 0 || p.coordinates.y > WORLD_H) {
+        PROJECTILES.splice(i, 1);
+        continue;
+      }
     }
   }
 }
@@ -427,6 +499,96 @@ function _rlDetectBossHits(now) {
   }
 }
 
+// ── Player damage (shield pop / ghost phase / death) ──────────────────────────
+// Returns true if the run ended.
+function _playerTakeHit(now, fromCoords, fxRadius) {
+  if (player.shield) {
+    player.shield = false;
+    player.invulnUntil = now + 1500;
+    _spawnExplosion(fromCoords, fxRadius);
+    soundManager.playSound("ASTEROID_HIT", 0.15);
+    if (shieldRechargeMs() < Infinity) rlState.shieldRechargeAt = now + shieldRechargeMs();
+    return false;
+  }
+  const ghostDur = ghostShipDurationMs();
+  if (ghostDur > 0 && now >= rlState.ghostCooldownUntil) {
+    rlState.ghostUntil = now + ghostDur;
+    rlState.ghostCooldownUntil = now + 20000;
+    soundManager.playSound("ASTEROID_HIT", 0.1);
+    return false;
+  }
+  _triggerDeath(now);
+  return true;
+}
+
+// ── Wave scheduling ───────────────────────────────────────────────────────────
+function _fireWavesIfDue(now, elapsed) {
+  if (rlState.nextWaveIndex >= WAVES.length) return;
+  const w = WAVES[rlState.nextWaveIndex];
+  if (elapsed < w.at) return;
+  rlState.nextWaveIndex++;
+
+  for (let i = 0; i < w.rocks; i++) _spawnRLAsteroid();
+  for (let i = 0; i < w.chasers && countType("chaser") < MAX_CHASERS; i++) {
+    const p = _offCameraSpawnPoint(30);
+    spawnChaser(p.x, p.y);
+  }
+  for (let i = 0; i < w.hunters && countType("hunter") < MAX_HUNTERS; i++) {
+    const p = _offCameraSpawnPoint(30);
+    spawnHunter(p.x, p.y, now);
+  }
+
+  rlState.waveFlashUntil = now + 1800;
+  rlState.waveFlashLabel = w.label;
+  soundManager.playSound("ASTEROID_HIT", 0.2);
+}
+
+// ── Projectile-enemy collisions ───────────────────────────────────────────────
+function _rlDetectEnemyHits(now) {
+  for (let i = PROJECTILES.length - 1; i >= 0; i--) {
+    const proj = PROJECTILES[i];
+    for (let j = ENEMIES.length - 1; j >= 0; j--) {
+      const e = ENEMIES[j];
+      if (Math.hypot(proj.coordinates.x - e.x, proj.coordinates.y - e.y) >= proj.radius + e.radius) continue;
+
+      e.hp--;
+      soundManager.playSound("ASTEROID_HIT", 0.1);
+      if (e.hp <= 0) {
+        const isHunter = e.type === "hunter";
+        addScore(isHunter ? 40 : 25);
+        _spawnXPOrb({ x: e.x, y: e.y }, (isHunter ? 20 : 12) * xpMultiplier(), now);
+        _spawnExplosion({ x: e.x, y: e.y }, e.radius * 2.2);
+        ENEMIES.splice(j, 1);
+      }
+      if (!proj.piercing) { PROJECTILES.splice(i, 1); break; }
+    }
+  }
+}
+
+// ── Enemy/enemy-bullet vs player ──────────────────────────────────────────────
+// Returns true if the run ended.
+function _rlDetectEnemyPlayerHits(now) {
+  if (now < player.invulnUntil || now < rlState.ghostUntil) return false;
+
+  for (let i = ENEMIES.length - 1; i >= 0; i--) {
+    const e = ENEMIES[i];
+    if (Math.hypot(e.x - player.coordinates.x, e.y - player.coordinates.y) < e.radius + 16) {
+      if (e.type === "chaser") ENEMIES.splice(i, 1); // chaser detonates on impact
+      return _playerTakeHit(now, { x: e.x, y: e.y }, e.radius * 2);
+    }
+  }
+
+  for (let i = ENEMY_BULLETS.length - 1; i >= 0; i--) {
+    const b = ENEMY_BULLETS[i];
+    if (Math.hypot(b.x - player.coordinates.x, b.y - player.coordinates.y) < 16 + 4.5) {
+      ENEMY_BULLETS.splice(i, 1);
+      return _playerTakeHit(now, { x: b.x, y: b.y }, 16);
+    }
+  }
+
+  return false;
+}
+
 // ── Explosions ────────────────────────────────────────────────────────────────
 function _spawnExplosion(coords, radius) {
   EXPLOSIONS.push({
@@ -560,14 +722,11 @@ function _checkLevelUp(now) {
     }
   }
 
-  if (rlState.level % 5 === 0) {
-    _triggerBoss(now);
-  } else {
-    _openUpgradePick();
-  }
+  _openUpgradePick();
 }
 
 function _openUpgradePick() {
+  rlState.pauseStartedAt = performance.now();
   upgradeCards = drawThreeCards();
   hoveredCardIndex = -1;
   rlState.screen = "upgrade-pick";
@@ -575,12 +734,18 @@ function _openUpgradePick() {
 
 function _triggerBoss(now) {
   rlState.bossIndex++;
-  boss = new Boss(rlState.bossIndex);
-  ASTEROIDS.length = 0;
+  rlState.bossSpawned = true;
+  const spawnX = Math.max(120, Math.min(WORLD_W - 120, player.coordinates.x));
+  const spawnY = Math.max(160, Math.min(WORLD_H - 120, player.coordinates.y - 260));
+  boss = new Boss(rlState.bossIndex, spawnX, spawnY, WORLD_W, WORLD_H);
   rlState.screen = "boss";
 }
 
 function _pickUpgrade(upgradeId) {
+  if (rlState.pauseStartedAt) {
+    rlState.stageStartTime += performance.now() - rlState.pauseStartedAt;
+    rlState.pauseStartedAt = 0;
+  }
   addUpgradeStack(upgradeId);
   rlState.screen = boss ? "boss" : "playing";
 }
@@ -589,7 +754,8 @@ function _onBossDefeated(now) {
   rlState.bossesDefeated++;
   addScore(500 * rlState.bossIndex);
   boss = null;
-  _openUpgradePick();
+  bankRun();
+  rlState.screen = "win";
 }
 
 function _triggerDeath(now) {
@@ -625,6 +791,20 @@ function _drawGhostIndicator(now) {
   CONTEXT.restore();
 }
 
+// ── Wave banner (screen space) ────────────────────────────────────────────────
+function _drawWaveFlash(now) {
+  if (now >= rlState.waveFlashUntil) return;
+  const alpha = Math.min(1, (rlState.waveFlashUntil - now) / 600);
+  CONTEXT.save();
+  CONTEXT.textAlign = "center";
+  CONTEXT.font = "bold 40px monospace";
+  CONTEXT.fillStyle = `rgba(255,120,80,${alpha})`;
+  CONTEXT.shadowColor = "rgba(255,120,80,0.8)";
+  CONTEXT.shadowBlur = 18;
+  CONTEXT.fillText(rlState.waveFlashLabel, CANVAS.width / 2, CANVAS.height * 0.28);
+  CONTEXT.restore();
+}
+
 // ── Main playing frame ────────────────────────────────────────────────────────
 function _playingFrame(now, isBoss) {
   CONTEXT.fillStyle = GREY;
@@ -632,33 +812,56 @@ function _playingFrame(now, isBoss) {
   drawStarfield();
 
   controlScheme();
-  if (getStackCount("thruster") > 0 && player.thrusting) {
-    const m = moveSpeedMult();
+  _updateCamera();
+  player.rotation = Math.atan2(
+    (MOUSE.y + camY) - player.coordinates.y,
+    (MOUSE.x + camX) - player.coordinates.x
+  );
+
+  if (player.thrusting) {
+    let m = RL_MOVE_SPEED_FACTOR;
+    if (getStackCount("thruster") > 0) m *= moveSpeedMult();
     player.velocity.x *= m;
     player.velocity.y *= m;
+  } else {
+    player.velocity.x = 0;
+    player.velocity.y = 0;
   }
+
+  const elapsed = now - rlState.stageStartTime;
+  const t = Math.max(0, Math.min(1, elapsed / STAGE_DURATION_MS));
+  rlState.speedRamp = Math.min(RL_SPEED_RAMP_MAX, 1 + (elapsed / 1000) * RL_SPEED_RAMP_RATE);
+
+  if (!isBoss && !rlState.bossSpawned && elapsed >= STAGE_DURATION_MS) {
+    _triggerBoss(now);
+    return;
+  }
+
+  CONTEXT.save();
+  CONTEXT.translate(-camX, -camY);
+
   player.updatePlayer();
-  enableCanvasWrap();
+  _clampPlayerToWorld();
 
-  rlState.speedRamp = Math.min(RL_SPEED_RAMP_MAX, 1 + ((now - rlState.runStartTime) / 1000) * RL_SPEED_RAMP_RATE);
-
-  if (!isBoss && now - rlState.lastSpawnTime >= RL_SPAWN_INTERVAL) {
+  const spawnInterval = _lerp(RL_SPAWN_INTERVAL_START, RL_SPAWN_INTERVAL_END, t);
+  const maxAsteroids = Math.round(_lerp(RL_MAX_ASTEROIDS_START, RL_MAX_ASTEROIDS_END, t));
+  if (now - rlState.lastSpawnTime >= spawnInterval && ASTEROIDS.length < maxAsteroids) {
     _spawnRLAsteroid();
     rlState.lastSpawnTime = now;
   }
 
   for (let i = ASTEROIDS.length - 1; i >= 0; i--) {
-    ASTEROIDS[i].updateAsteroid();
+    _rlUpdateAsteroid(ASTEROIDS[i]);
   }
 
   _rlDetectPlayerHit(now);
-  if (rlState.screen === "end") return;
+  if (rlState.screen === "end") { CONTEXT.restore(); return; }
 
   if (isBoss && boss) {
     boss.step(now, player.coordinates.x, player.coordinates.y);
     boss.draw();
     _rlDetectBossHits(now);
-    if (rlState.screen === "end") return;
+    if (rlState.screen === "end") { CONTEXT.restore(); return; }
   }
 
   _rlUpdateProjectiles();
@@ -670,21 +873,16 @@ function _playingFrame(now, isBoss) {
     rlState.lastShotTime = now;
   }
 
+  _fireWavesIfDue(now, elapsed);
+  updateEnemies(now, player.coordinates.x, player.coordinates.y, rlState.speedRamp, WORLD_W, WORLD_H);
+  _rlDetectEnemyHits(now);
+  if (_rlDetectEnemyPlayerHits(now)) { CONTEXT.restore(); return; }
+  drawEnemies(CONTEXT);
+
   _rlUpdatePowerUps(now);
   _updateExplosions();
   _drawOrbitRing(now);
   _updateXPOrbs(now);
-
-  if (rlState.shieldRechargeAt > 0 && now >= rlState.shieldRechargeAt) {
-    player.shield = true;
-    rlState.shieldRechargeAt = 0;
-  }
-
-  drawXPStrip(isBoss);
-  drawLevelBadge();
-  drawRLScore();
-  if (isBoss && boss) drawBossHPBar(boss);
-  if (getStackCount("ghostShip") > 0) _drawGhostIndicator(now);
 
   if (now < rlState.ghostUntil) {
     CONTEXT.save();
@@ -699,6 +897,21 @@ function _playingFrame(now, isBoss) {
     CONTEXT.stroke();
     CONTEXT.restore();
   }
+
+  CONTEXT.restore();
+
+  if (rlState.shieldRechargeAt > 0 && now >= rlState.shieldRechargeAt) {
+    player.shield = true;
+    rlState.shieldRechargeAt = 0;
+  }
+
+  drawXPStrip(isBoss);
+  drawLevelBadge();
+  drawRLScore();
+  if (!rlState.bossSpawned) drawBossCountdown((rlState.stageStartTime + STAGE_DURATION_MS) - now);
+  _drawWaveFlash(now);
+  if (isBoss && boss) drawBossHPBar(boss);
+  if (getStackCount("ghostShip") > 0) _drawGhostIndicator(now);
 }
 
 // ── Input handlers ────────────────────────────────────────────────────────────
@@ -723,7 +936,7 @@ window.addEventListener("mousedown", (e) => {
   if (rlState.screen === "menu") {
     for (const btn of getRLMenuButtons()) {
       if (!isInside(mx, my, btn)) continue;
-      if (btn.id === "rl-start") startRun(now);
+      if (btn.id === "rl-level-1") startRun(now);
       else if (btn.id === "rl-back") closeRoguelike();
       return;
     }
@@ -735,6 +948,16 @@ window.addEventListener("mousedown", (e) => {
       if (!isInside(mx, my, btn)) continue;
       if (btn.id === "rl-restart") startRun(now);
       else if (btn.id === "rl-back") closeRoguelike();
+      return;
+    }
+    return;
+  }
+
+  if (rlState.screen === "win") {
+    for (const btn of getRLWinButtons()) {
+      if (!isInside(mx, my, btn)) continue;
+      if (btn.id === "rl-restart") startRun(now);
+      else if (btn.id === "rl-levels") { rlState.screen = "menu"; _clearRunState(); }
       return;
     }
     return;
