@@ -40,7 +40,7 @@ update).
 
 Success criteria (verified in-browser):
 - Ship begins a run with 1 default weapon firing automatically and 1 heart.
-- On level-up: 3 weapon/passive cards are offered AND 1 stat point can be spent;
+- On level-up: 4 weapon/passive cards are offered AND 1 stat point can be spent;
   picking a new weapon adds a second independently-firing stream.
 - Two equipped weapons visibly fire on different cadences at once.
 - Equipping a passive (e.g. Pierce) changes the behavior of *all* equipped
@@ -204,12 +204,19 @@ Replaces the current 1-hit-death + boolean shield model.
 `_checkLevelUp` (rl.js:751) keeps the XP-threshold logic and `onLevelUp` hook,
 then opens the pick screen:
 
-1. **Draw 3 cards** from the combined weapon+passive pool. Eligible entries:
-   - un-owned weapons (only if a weapon slot is free), un-owned passives (if a
-     passive slot is free),
-   - owned weapons/passives currently below `maxLevel` (offered as an upgrade).
+1. **Draw 4 cards** from the combined weapon+passive pool.
+   - **Card 1 is reserved for the default weapon (`blaster`) upgrade** and is
+     always present *unless blaster is already at `maxLevel`*, in which case that
+     slot falls back to a normal random draw.
+   - The remaining 3 cards are weighted-random distinct draws from the eligible
+     pool. Eligible entries:
+     - un-owned weapons (only if a weapon slot is free), un-owned passives (if a
+       passive slot is free),
+     - owned weapons/passives currently below `maxLevel` (offered as an upgrade).
    Weighted by `tier`; anti-repeat handled by eligibility (a maxed or
    slot-blocked item is simply not eligible) rather than the old weight-decay.
+   No duplicate cards within a single draw (the reserved blaster card is excluded
+   from the other 3).
 2. Player clicks a card → `addOrUpgradeWeapon` / `addOrUpgradePassive`.
 3. **+1 stat point.** A stat row on the same screen shows the 4 stats with their
    levels; clicking one calls `spendStatPoint`. A maxed stat (maxHP at 2) is
