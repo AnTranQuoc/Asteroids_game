@@ -23,13 +23,6 @@ export const rlState = {
   hunterUnlocked: false,   // continuous hunter spawn on after its wave fires
   waveFlashUntil: 0,       // ms until the "WAVE N" banner fades out
   waveFlashLabel: "",      // label shown by the wave banner
-  // upgrade effects
-  orbitAngle: 0,           // base angle for orbit ring orbs
-  ghostUntil: 0,           // ms timestamp until ghost ship phase ends
-  ghostCooldownUntil: 0,   // ms timestamp when ghost ship can trigger again
-  shieldRechargeAt: 0,     // ms timestamp when shield restores (0 = not pending)
-  // Map<upgradeId, stackCount>
-  upgrades: new Map(),
 };
 
 export function resetRlState(now) {
@@ -55,26 +48,12 @@ export function resetRlState(now) {
   rlState.hunterUnlocked = false;
   rlState.waveFlashUntil = 0;
   rlState.waveFlashLabel = "";
-  rlState.orbitAngle = 0;
-  rlState.ghostUntil = 0;
-  rlState.ghostCooldownUntil = 0;
-  rlState.shieldRechargeAt = 0;
-  rlState.upgrades = new Map();
 }
 
 export function xpRequired(level) {
   // Quadratic curve: first level-up is cheap (~2 orbs), then the per-level cost
   // climbs by a growing increment (+10 each level) so the slope keeps rising.
   return 30 + level * 15 + level * level * 5;
-}
-
-export function getStackCount(upgradeId) {
-  return rlState.upgrades.get(upgradeId) || 0;
-}
-
-export function addUpgradeStack(upgradeId) {
-  rlState.upgrades.set(upgradeId, getStackCount(upgradeId) + 1);
-  rlState.upgradesPickedCount++;
 }
 
 export function gainXP(amount) {

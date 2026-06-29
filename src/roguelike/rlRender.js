@@ -2,8 +2,9 @@
 import { CANVAS, CONTEXT } from "../core/canvas.js";
 import { OFF_WHITE } from "../core/constants.js";
 import { rlState } from "./rlState.js";
-import { UPGRADE_POOL } from "./rlUpgrades.js";
 import { kitState, maxHearts } from "./rlKit.js";
+import { WEAPONS } from "./rlWeapons.js";
+import { PASSIVES } from "./rlPassives.js";
 import { drawButton } from "../ui/ui.js";
 
 // ── XP strip (top edge, 5px tall) ────────────────────────────────────────────
@@ -402,27 +403,27 @@ export function drawRLEnd(bestScore, now) {
   CONTEXT.fillText("UPGRADES THIS RUN", cx, y);
   y += 18;
 
-  const TIER_CHIP_COLORS = { COMMON: "#7ef5aa", RARE: "#78c8ff", LEGENDARY: "#ffd750" };
+  const TIER_CHIP_COLORS = { COMMON: "#7ef5aa", RARE: "#78c8ff", LEGENDARY: "#ffd750", STAT: "#c8aaff" };
   let chipX = cx - 200;
   let chipY = y;
   CONTEXT.font = "11px monospace";
   CONTEXT.textBaseline = "middle";
-  for (const [id, stacks] of rlState.upgrades) {
-    if (stacks === 0) continue;
-    const def = UPGRADE_POOL.find((u) => u.id === id);
-    if (!def) continue;
-    const label = `${def.name} ×${stacks}`;
-    const w = CONTEXT.measureText(label).width + 16;
+  const chips = [
+    ...kitState.kit.map((e) => ({ label: `${WEAPONS[e.id].name} Lv${e.level}`, tier: WEAPONS[e.id].tier })),
+    ...kitState.passives.map((e) => ({ label: `${PASSIVES[e.id].name} Lv${e.level}`, tier: PASSIVES[e.id].tier })),
+  ];
+  for (const chip of chips) {
+    const w = CONTEXT.measureText(chip.label).width + 16;
     if (chipX + w > cx + 200) { chipX = cx - 200; chipY += 28; }
     CONTEXT.fillStyle = `rgba(255,255,255,0.05)`;
-    CONTEXT.strokeStyle = TIER_CHIP_COLORS[def.tier];
+    CONTEXT.strokeStyle = TIER_CHIP_COLORS[chip.tier];
     CONTEXT.lineWidth = 1;
     roundRect(chipX, chipY, w, 22, 4);
     CONTEXT.fill();
     CONTEXT.stroke();
-    CONTEXT.fillStyle = TIER_CHIP_COLORS[def.tier];
+    CONTEXT.fillStyle = TIER_CHIP_COLORS[chip.tier];
     CONTEXT.textAlign = "center";
-    CONTEXT.fillText(label, chipX + w / 2, chipY + 11);
+    CONTEXT.fillText(chip.label, chipX + w / 2, chipY + 11);
     chipX += w + 8;
   }
   CONTEXT.textBaseline = "alphabetic";

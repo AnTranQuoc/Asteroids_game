@@ -13,8 +13,7 @@ import { setLastEarned } from "../systems/money.js";
 import { controlScheme } from "../systems/controls.js";
 import soundManager from "../audio/soundManager.js";
 
-import { rlState, resetRlState, xpRequired, gainXP, addScore, getStackCount, addUpgradeStack } from "./rlState.js";
-import { drawThreeCards, fireIntervalMs, moveSpeedMult, bulletRadiusMult, xpMultiplier, shieldRechargeMs, pierceStacks, ricochetBounces, forkShotShards, magnetRadiusMult, magnetPullsXP, orbitRingCount, orbitRingFastSpin, novaBurstStacks, ghostShipDurationMs } from "./rlUpgrades.js";
+import { rlState, resetRlState, xpRequired, gainXP, addScore } from "./rlState.js";
 import { kitState, resetKit, tickKit, drawKit, runPassiveHook, maxHearts, weaponLevel, passiveLevel, addOrUpgradeWeapon, addOrUpgradePassive, applyStat, drawCards } from "./rlKit.js";
 import { Boss } from "./rlBoss.js";
 import { ENEMIES, ENEMY_BULLETS, clearEnemies, countType, spawnChaser, spawnHunter, updateEnemies, drawEnemies } from "./rlEnemies.js";
@@ -35,7 +34,6 @@ let runBanked = false;
 
 const EXPLOSIONS = [];
 const XPORBS = [];
-const ORBIT_COOLDOWNS = [];
 const RL_SPEED_RAMP_RATE = 0.012;
 const RL_SPEED_RAMP_MAX = 2.2;
 const RL_MOVE_SPEED_FACTOR = 0.65; // ~4.6 px/frame vs single-player's 7 (MOVEMENT_SPEED).
@@ -103,7 +101,6 @@ function _clearRunState() {
   POWERUPS.length = 0;
   EXPLOSIONS.length = 0;
   XPORBS.length = 0;
-  ORBIT_COOLDOWNS.length = 0;
   clearEnemies();
   boss = null;
   upgradeCards = [];
@@ -400,38 +397,7 @@ function _rlDetectProjectileHits(now) {
       const dist = Math.hypot(proj.coordinates.x - ast.coordinates.x, proj.coordinates.y - ast.coordinates.y);
       if (dist >= proj.radius + ast.radius) continue;
 
-      const scoreGain = Math.round(15 * (1 - ast.radius / 450));
-      addScore(scoreGain);
-      const xpGain = xpForRadius(ast.radius) * xpMultiplier();
-      _spawnXPOrb({ ...ast.coordinates }, xpGain, now);
-      rlState.asteroidsKilled++;
-
-      soundManager.playSound("ASTEROID_HIT", 0.1);
-      _spawnExplosion(ast.coordinates, ast.radius);
-
-      const shards = forkShotShards();
-      const children = splitAsteroid(ast);
-
-      ASTEROIDS.splice(j, 1);
-      Array.prototype.push.apply(ASTEROIDS, children);
-
-      // Fork: fan extra shards outward from just beyond this asteroid's radius,
-      // so they clear the freshly-split children (which spawn at the same point)
-      // instead of insta-killing the new fragments, and fly on to hit other rocks.
-      if (shards > 0) {
-        const baseAngle = Math.atan2(proj.velocity.y, proj.velocity.x);
-        const shardRadius = 3 * bulletRadiusMult();
-        const offset = ast.radius + shardRadius + 8;
-        for (let s = 0; s < shards; s++) {
-          const a = baseAngle + (Math.PI / 4) * (s % 2 === 0 ? 1 : -1) * Math.ceil((s + 1) / 2);
-          const shard = new Projectile({
-            coordinates: { x: ast.coordinates.x + Math.cos(a) * offset, y: ast.coordinates.y + Math.sin(a) * offset },
-            velocity: { x: 26 * Math.cos(a), y: 26 * Math.sin(a) },
-          });
-          shard.radius = shardRadius;
-          PROJECTILES.push(shard);
-        }
-      }
+      const children = _destroyAsteroid(ast, now) || [];
 
       if (proj.piercing) {
         if (proj.pierceSplit && children.length === 0) {
@@ -677,7 +643,7 @@ function _updateExplosions() {
 
 // ── Power-up handling ─────────────────────────────────────────────────────────
 function _rlUpdatePowerUps(now) {
-  const magMult = magnetRadiusMult();
+  const magMult = 1 + kitState.stats.pickup * 0.4;
   for (let i = POWERUPS.length - 1; i >= 0; i--) {
     const p = POWERUPS[i];
     p.update();
@@ -694,83 +660,12 @@ function _rlUpdatePowerUps(now) {
   }
 }
 
-// ── Orbit ring ────────────────────────────────────────────────────────────────
-function _drawOrbitRing(now) {
-  const count = orbitRingCount();
-  if (count === 0) return;
-  const spinSpeed = orbitRingFastSpin() ? 0.06 : 0.035;
-  rlState.orbitAngle += spinSpeed;
-  const orbitR = 58;
-  const orbR = 7;
-
-  for (let i = 0; i < count; i++) {
-    const angle = rlState.orbitAngle + (Math.PI * 2 * i) / count;
-    const ox = player.coordinates.x + Math.cos(angle) * orbitR;
-    const oy = player.coordinates.y + Math.sin(angle) * orbitR;
-
-    const cooldownExpiry = ORBIT_COOLDOWNS[i] || 0;
-    const onCooldown = now < cooldownExpiry;
-    // Flicker: show orb on alternating 80ms ticks while cooling down
-    const visible = !onCooldown || Math.floor(now / 80) % 2 === 0;
-
-    if (visible) {
-      CONTEXT.save();
-      CONTEXT.beginPath();
-      CONTEXT.arc(ox, oy, orbR, 0, Math.PI * 2);
-      CONTEXT.fillStyle = onCooldown ? "rgba(180,180,220,0.45)" : "rgba(255,215,80,0.85)";
-      CONTEXT.shadowColor = onCooldown ? "#8888cc" : "#ffd750";
-      CONTEXT.shadowBlur = 12;
-      CONTEXT.fill();
-      CONTEXT.restore();
-    }
-
-    if (!onCooldown) {
-      for (let j = ASTEROIDS.length - 1; j >= 0; j--) {
-        const ast = ASTEROIDS[j];
-        if (Math.hypot(ox - ast.coordinates.x, oy - ast.coordinates.y) < orbR + ast.radius) {
-          const children = splitAsteroid(ast);
-          _spawnExplosion(ast.coordinates, ast.radius);
-          soundManager.playSound("ASTEROID_HIT", 0.08);
-          const xpGain = xpForRadius(ast.radius) * xpMultiplier();
-          _spawnXPOrb({ ...ast.coordinates }, xpGain, now);
-          addScore(Math.round(15 * (1 - ast.radius / 450)));
-          rlState.asteroidsKilled++;
-          ASTEROIDS.splice(j, 1);
-          Array.prototype.push.apply(ASTEROIDS, children);
-          ORBIT_COOLDOWNS[i] = now + 3000;
-          break;
-        }
-      }
-    }
-  }
-}
-
 // ── Level-up logic ────────────────────────────────────────────────────────────
 function _checkLevelUp(now) {
   if (rlState.xp < rlState.xpRequired) return;
   rlState.xp -= rlState.xpRequired;
   rlState.level++;
   rlState.xpRequired = xpRequired(rlState.level);
-
-  // Nova Burst: explosion on level-up
-  const nova = novaBurstStacks();
-  if (nova > 0) {
-    const novaRadius = nova >= 2 ? 180 : 100;
-    _spawnExplosion({ x: player.coordinates.x, y: player.coordinates.y }, novaRadius);
-    soundManager.playSound("ASTEROID_HIT", 0.35);
-    for (let i = ASTEROIDS.length - 1; i >= 0; i--) {
-      const ast = ASTEROIDS[i];
-      if (Math.hypot(ast.coordinates.x - player.coordinates.x, ast.coordinates.y - player.coordinates.y) < novaRadius) {
-        addScore(Math.round(15 * (1 - ast.radius / 450)));
-        gainXP(xpForRadius(ast.radius) * xpMultiplier());
-        rlState.asteroidsKilled++;
-        ASTEROIDS.splice(i, 1);
-      }
-    }
-    if (nova >= 2 && boss) {
-      boss.lastPatternTime = now + 3000;
-    }
-  }
 
   _openUpgradePick();
 }
@@ -799,6 +694,7 @@ function _pickUpgrade(card) {
   if (card.kind === "weapon") addOrUpgradeWeapon(card.id);
   else if (card.kind === "passive") addOrUpgradePassive(card.id);
   else applyStat(card.id);
+  rlState.upgradesPickedCount++;
   rlState.screen = boss ? "boss" : "playing";
 }
 
@@ -818,8 +714,8 @@ function _triggerDeath(now) {
 
 // ── Ghost ship cooldown indicator ─────────────────────────────────────────────
 function _drawGhostIndicator(now) {
-  const active = now < rlState.ghostUntil;
-  const onCooldown = !active && now < rlState.ghostCooldownUntil;
+  const active = now < (player.phaseUntil || 0);
+  const onCooldown = !active && now < (player.phaseCooldownUntil || 0);
   const x = CANVAS.width - 14;
   const y = 80;
 
@@ -831,14 +727,14 @@ function _drawGhostIndicator(now) {
     CONTEXT.fillStyle = `rgba(100,200,255,${0.75 + 0.25 * Math.sin(now / 90)})`;
     CONTEXT.shadowColor = "#64c8ff";
     CONTEXT.shadowBlur = 8;
-    CONTEXT.fillText("GHOST ACTIVE", x, y);
+    CONTEXT.fillText("PHASE ACTIVE", x, y);
   } else if (onCooldown) {
-    const secs = Math.ceil((rlState.ghostCooldownUntil - now) / 1000);
+    const secs = Math.ceil((player.phaseCooldownUntil - now) / 1000);
     CONTEXT.fillStyle = "rgba(150,150,180,0.85)";
-    CONTEXT.fillText(`GHOST ${secs}s`, x, y);
+    CONTEXT.fillText(`PHASE ${secs}s`, x, y);
   } else {
     CONTEXT.fillStyle = "rgba(100,220,140,0.85)";
-    CONTEXT.fillText("GHOST READY", x, y);
+    CONTEXT.fillText("PHASE READY", x, y);
   }
   CONTEXT.restore();
 }
@@ -872,7 +768,7 @@ function _playingFrame(now, isBoss) {
 
   if (player.thrusting) {
     let m = RL_MOVE_SPEED_FACTOR;
-    if (getStackCount("thruster") > 0) m *= moveSpeedMult();
+    m *= 1 + kitState.stats.moveSpeed * 0.12;
     player.velocity.x *= m;
     player.velocity.y *= m;
   } else {
@@ -933,7 +829,6 @@ function _playingFrame(now, isBoss) {
 
   _rlUpdatePowerUps(now);
   _updateExplosions();
-  _drawOrbitRing(now);
   _updateXPOrbs(now);
 
   if (now < (player.phaseUntil || 0)) {
@@ -954,11 +849,6 @@ function _playingFrame(now, isBoss) {
 
   CONTEXT.restore();
 
-  if (rlState.shieldRechargeAt > 0 && now >= rlState.shieldRechargeAt) {
-    player.shield = true;
-    rlState.shieldRechargeAt = 0;
-  }
-
   drawXPStrip(isBoss);
   drawLevelBadge();
   drawRLScore();
@@ -966,7 +856,7 @@ function _playingFrame(now, isBoss) {
   if (!rlState.bossSpawned) drawBossCountdown((rlState.stageStartTime + STAGE_DURATION_MS) - now);
   _drawWaveFlash(now);
   if (isBoss && boss) drawBossHPBar(boss);
-  if (getStackCount("ghostShip") > 0) _drawGhostIndicator(now);
+  if (passiveLevel("phase") > 0) _drawGhostIndicator(now);
 }
 
 // ── Input handlers ────────────────────────────────────────────────────────────
