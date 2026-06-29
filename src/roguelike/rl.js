@@ -302,6 +302,7 @@ function _buildCtx(now) {
     spawnProjectile(x, y, vx, vy, radius) {
       const p = new Projectile({ coordinates: { x, y }, velocity: { x: vx, y: vy } });
       p.radius = radius;
+      p.damage = 1;
       runPassiveHook("onProjectileSpawn", p);
       PROJECTILES.push(p);
       return p;
@@ -608,15 +609,7 @@ function _rlDetectEnemyHits(now) {
       const e = ENEMIES[j];
       if (Math.hypot(proj.coordinates.x - e.x, proj.coordinates.y - e.y) >= proj.radius + e.radius) continue;
 
-      e.hp--;
-      soundManager.playSound("ASTEROID_HIT", 0.1);
-      if (e.hp <= 0) {
-        const isHunter = e.type === "hunter";
-        addScore(isHunter ? 40 : 25);
-        _spawnXPOrb({ x: e.x, y: e.y }, (isHunter ? 20 : 12) * xpMultiplier(), now);
-        _spawnExplosion({ x: e.x, y: e.y }, e.radius * 2.2);
-        ENEMIES.splice(j, 1);
-      }
+      _damageEnemy(e, proj.damage || 1, { x: e.x, y: e.y }, now);
       if (!proj.piercing) { PROJECTILES.splice(i, 1); break; }
     }
   }

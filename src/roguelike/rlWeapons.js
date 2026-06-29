@@ -79,4 +79,26 @@ export const WEAPONS = {
       }
     },
   },
+
+  railgun: {
+    id: "railgun",
+    name: "Railgun",
+    tier: "RARE",
+    maxLevel: 3,
+    desc: (lvl) => `Piercing rail bolt, ${3 + lvl} dmg`,
+    cooldownMs: (lvl) => (lvl >= 3 ? 820 : lvl === 2 ? 980 : 1120),
+    fire(ctx, lvl) {
+      const p = ctx.player;
+      const rot = p.rotation;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      const proj = ctx.spawnProjectile(
+        p.coordinates.x + cos * 45, p.coordinates.y + sin * 45,
+        cos * 34, sin * 34, 6 + lvl
+      );
+      proj.piercing = true;       // always pierces, independent of Pierce passive
+      proj.damage = 3 + lvl;
+      proj.maxDistance = 1400;
+      soundManager.playSound("FIRE_SOUND", 0.18);
+    },
+  },
 };
