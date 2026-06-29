@@ -126,6 +126,7 @@ const TIER_COLORS = {
   COMMON:    { accent: "126,245,170", label: "COMMON" },
   RARE:      { accent: "120,200,255", label: "RARE" },
   LEGENDARY: { accent: "255,215,80",  label: "LEGENDARY" },
+  STAT:      { accent: "200,170,255", label: "STAT" },
 };
 
 const CARD_W = 190;
@@ -133,7 +134,8 @@ const CARD_H = 230;
 const CARD_GAP = 20;
 
 export function getUpgradeCardButtons(cards) {
-  const totalW = CARD_W * 3 + CARD_GAP * 2;
+  const n = cards.length;
+  const totalW = CARD_W * n + CARD_GAP * (n - 1);
   const startX = CANVAS.width / 2 - totalW / 2;
   const startY = CANVAS.height / 2 - CARD_H / 2 + 20;
   return cards.map((card, i) => ({
@@ -212,30 +214,35 @@ export function drawUpgradeOverlay(cards, hoveredIndex) {
     // Description (next stack)
     CONTEXT.font = "11px monospace";
     CONTEXT.fillStyle = "rgba(200,200,210,0.85)";
-    const desc = card.desc(card.nextStacks);
+    const desc = card.desc;
     wrapText(desc, btn.x + btn.w / 2, btn.y + 108, btn.w - 20, 16);
 
-    // Stack dots
-    const maxDots = Math.min(card.nextStacks + 1, 6);
-    const dotR = 4;
-    const dotGap = 10;
-    const dotsW = maxDots * (dotR * 2 + dotGap) - dotGap;
-    let dotX = btn.x + btn.w / 2 - dotsW / 2 + dotR;
-    const dotY = btn.y + CARD_H - 28;
-    for (let d = 0; d < maxDots; d++) {
-      CONTEXT.beginPath();
-      CONTEXT.arc(dotX, dotY, dotR, 0, Math.PI * 2);
-      if (d < card.currentStacks) {
-        CONTEXT.fillStyle = `rgb(${accent})`;
-        CONTEXT.shadowColor = `rgb(${accent})`;
-        CONTEXT.shadowBlur = 6;
-      } else {
-        CONTEXT.fillStyle = "rgba(255,255,255,0.12)";
-        CONTEXT.shadowBlur = 0;
+    // Level pips (finite maxLevel) or "Lv N" text (unbounded stats)
+    if (Number.isFinite(card.maxLevel)) {
+      const dots = card.maxLevel;
+      const dotR = 4, dotGap = 10;
+      const dotsW = dots * (dotR * 2 + dotGap) - dotGap;
+      let dotX = btn.x + btn.w / 2 - dotsW / 2 + dotR;
+      const dotY = btn.y + CARD_H - 28;
+      for (let d = 0; d < dots; d++) {
+        CONTEXT.beginPath();
+        CONTEXT.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+        if (d < card.nextLevel) {
+          CONTEXT.fillStyle = `rgb(${accent})`;
+          CONTEXT.shadowColor = `rgb(${accent})`;
+          CONTEXT.shadowBlur = 6;
+        } else {
+          CONTEXT.fillStyle = "rgba(255,255,255,0.12)";
+          CONTEXT.shadowBlur = 0;
+        }
+        CONTEXT.fill();
+        dotX += dotR * 2 + dotGap;
       }
-      CONTEXT.fill();
       CONTEXT.shadowBlur = 0;
-      dotX += dotR * 2 + dotGap;
+    } else {
+      CONTEXT.font = "11px monospace";
+      CONTEXT.fillStyle = `rgb(${accent})`;
+      CONTEXT.fillText(`Lv ${card.nextLevel}`, btn.x + btn.w / 2, btn.y + CARD_H - 28);
     }
 
     CONTEXT.restore();

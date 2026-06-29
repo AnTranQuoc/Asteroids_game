@@ -15,7 +15,7 @@ import soundManager from "../audio/soundManager.js";
 
 import { rlState, resetRlState, xpRequired, gainXP, addScore, getStackCount, addUpgradeStack } from "./rlState.js";
 import { drawThreeCards, fireIntervalMs, moveSpeedMult, bulletRadiusMult, xpMultiplier, shieldRechargeMs, pierceStacks, ricochetBounces, forkShotShards, magnetRadiusMult, magnetPullsXP, orbitRingCount, orbitRingFastSpin, novaBurstStacks, ghostShipDurationMs } from "./rlUpgrades.js";
-import { kitState, resetKit, tickKit, drawKit, runPassiveHook, maxHearts, weaponLevel, passiveLevel } from "./rlKit.js";
+import { kitState, resetKit, tickKit, drawKit, runPassiveHook, maxHearts, weaponLevel, passiveLevel, addOrUpgradeWeapon, addOrUpgradePassive, applyStat, drawCards } from "./rlKit.js";
 import { Boss } from "./rlBoss.js";
 import { ENEMIES, ENEMY_BULLETS, clearEnemies, countType, spawnChaser, spawnHunter, updateEnemies, drawEnemies } from "./rlEnemies.js";
 import {
@@ -784,7 +784,7 @@ function _checkLevelUp(now) {
 
 function _openUpgradePick() {
   rlState.pauseStartedAt = performance.now();
-  upgradeCards = drawThreeCards();
+  upgradeCards = drawCards();
   hoveredCardIndex = -1;
   rlState.screen = "upgrade-pick";
 }
@@ -798,12 +798,14 @@ function _triggerBoss(now) {
   rlState.screen = "boss";
 }
 
-function _pickUpgrade(upgradeId) {
+function _pickUpgrade(card) {
   if (rlState.pauseStartedAt) {
     rlState.stageStartTime += performance.now() - rlState.pauseStartedAt;
     rlState.pauseStartedAt = 0;
   }
-  addUpgradeStack(upgradeId);
+  if (card.kind === "weapon") addOrUpgradeWeapon(card.id);
+  else if (card.kind === "passive") addOrUpgradePassive(card.id);
+  else applyStat(card.id);
   rlState.screen = boss ? "boss" : "playing";
 }
 
@@ -1025,7 +1027,7 @@ window.addEventListener("mousedown", (e) => {
     const btns = getUpgradeCardButtons(upgradeCards);
     for (let i = 0; i < btns.length; i++) {
       if (isInside(mx, my, btns[i])) {
-        _pickUpgrade(upgradeCards[i].id);
+        _pickUpgrade(upgradeCards[i]);
         return;
       }
     }
