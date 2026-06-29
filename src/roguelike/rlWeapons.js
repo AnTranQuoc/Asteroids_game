@@ -101,4 +101,30 @@ export const WEAPONS = {
       soundManager.playSound("FIRE_SOUND", 0.18);
     },
   },
+
+  shotgun: {
+    id: "shotgun",
+    name: "Shotgun",
+    tier: "COMMON",
+    maxLevel: 3,
+    desc: (lvl) => `${3 + lvl} short-range pellets${lvl >= 3 ? ", wide" : ""}`,
+    cooldownMs: (lvl) => 760 - lvl * 70,
+    fire(ctx, lvl) {
+      const p = ctx.player;
+      const rot = p.rotation;
+      const pellets = 3 + lvl;
+      const arc = lvl >= 3 ? 0.9 : 0.6;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      for (let i = 0; i < pellets; i++) {
+        const frac = pellets === 1 ? 0.5 : i / (pellets - 1);
+        const a = rot + arc * (frac - 0.5);
+        const proj = ctx.spawnProjectile(
+          p.coordinates.x + cos * 40, p.coordinates.y + sin * 40,
+          Math.cos(a) * 22, Math.sin(a) * 22, 3
+        );
+        proj.maxDistance = 230;
+      }
+      soundManager.playSound("FIRE_SOUND", 0.12);
+    },
+  },
 };
