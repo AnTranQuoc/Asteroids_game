@@ -12,12 +12,15 @@ export const rlState = {
   upgradesPickedCount: 0,
   runStartTime: 0,
   lastSpawnTime: 0,
+  lastEnemySpawnTime: 0,   // last continuous enemy spawn
   lastShotTime: 0,
   speedRamp: 1.0,
   stageStartTime: 0,
   bossSpawned: false,
   pauseStartedAt: 0,
   nextWaveIndex: 0,        // index of the next wave to fire
+  chaserUnlocked: false,   // continuous chaser spawn on after its wave fires
+  hunterUnlocked: false,   // continuous hunter spawn on after its wave fires
   waveFlashUntil: 0,       // ms until the "WAVE N" banner fades out
   waveFlashLabel: "",      // label shown by the wave banner
   // upgrade effects
@@ -41,12 +44,15 @@ export function resetRlState(now) {
   rlState.upgradesPickedCount = 0;
   rlState.runStartTime = now;
   rlState.lastSpawnTime = now;
+  rlState.lastEnemySpawnTime = now;
   rlState.lastShotTime = now;
   rlState.speedRamp = 1.0;
   rlState.stageStartTime = now;
   rlState.bossSpawned = false;
   rlState.pauseStartedAt = 0;
   rlState.nextWaveIndex = 0;
+  rlState.chaserUnlocked = false;
+  rlState.hunterUnlocked = false;
   rlState.waveFlashUntil = 0;
   rlState.waveFlashLabel = "";
   rlState.orbitAngle = 0;
@@ -57,7 +63,9 @@ export function resetRlState(now) {
 }
 
 export function xpRequired(level) {
-  return 200 + level * 80;
+  // Quadratic curve: first level-up is cheap (~2 orbs), then the per-level cost
+  // climbs by a growing increment (+10 each level) so the slope keeps rising.
+  return 30 + level * 15 + level * level * 5;
 }
 
 export function getStackCount(upgradeId) {

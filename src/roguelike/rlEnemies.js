@@ -24,12 +24,12 @@ export function countType(type) {
 }
 
 export function spawnChaser(x, y) {
-  ENEMIES.push({ x, y, vx: 0, vy: 0, rot: 0, type: "chaser", radius: 12, hp: 1 });
+  ENEMIES.push({ x, y, vx: 0, vy: 0, rot: 0, type: "chaser", radius: 18, hp: 1 });
 }
 
 export function spawnHunter(x, y, now) {
   ENEMIES.push({
-    x, y, vx: 0, vy: 0, rot: 0, type: "hunter", radius: 14, hp: 2,
+    x, y, vx: 0, vy: 0, rot: 0, type: "hunter", radius: 21, hp: 2,
     lastShot: now, standoff: 250 + Math.random() * 60,
     strafeDir: Math.random() < 0.5 ? 1 : -1,
   });
@@ -92,6 +92,10 @@ export function drawEnemies(ctx) {
     ctx.save();
     ctx.translate(e.x, e.y);
     ctx.rotate(e.rot);
+    // Shapes were authored for the old radii (chaser 12, hunter 14); scale up
+    // so the drawing tracks the current radius.
+    const s = e.radius / (e.type === "chaser" ? 12 : 14);
+    ctx.scale(s, s);
     ctx.lineWidth = 1.5;
     ctx.shadowBlur = 11;
     if (e.type === "chaser") {

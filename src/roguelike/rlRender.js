@@ -376,14 +376,16 @@ export function drawRLEnd(bestScore, now) {
 
   const TIER_CHIP_COLORS = { COMMON: "#7ef5aa", RARE: "#78c8ff", LEGENDARY: "#ffd750" };
   let chipX = cx - 200;
-  const chipY = y;
+  let chipY = y;
+  CONTEXT.font = "11px monospace";
+  CONTEXT.textBaseline = "middle";
   for (const [id, stacks] of rlState.upgrades) {
     if (stacks === 0) continue;
     const def = UPGRADE_POOL.find((u) => u.id === id);
     if (!def) continue;
     const label = `${def.name} ×${stacks}`;
-    CONTEXT.font = "11px monospace";
     const w = CONTEXT.measureText(label).width + 16;
+    if (chipX + w > cx + 200) { chipX = cx - 200; chipY += 28; }
     CONTEXT.fillStyle = `rgba(255,255,255,0.05)`;
     CONTEXT.strokeStyle = TIER_CHIP_COLORS[def.tier];
     CONTEXT.lineWidth = 1;
@@ -394,8 +396,8 @@ export function drawRLEnd(bestScore, now) {
     CONTEXT.textAlign = "center";
     CONTEXT.fillText(label, chipX + w / 2, chipY + 11);
     chipX += w + 8;
-    if (chipX > cx + 200) { chipX = cx - 200; y += 28; }
   }
+  CONTEXT.textBaseline = "alphabetic";
 
   CONTEXT.restore();
 

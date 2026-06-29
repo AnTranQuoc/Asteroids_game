@@ -1,6 +1,6 @@
 // src/roguelike/rl.js
 import { CANVAS, CONTEXT } from "../core/canvas.js";
-import { GREY, ASTEROIDS, PROJECTILES, MOUSE, KEYPRESS, ASTEROID_MIN_RADIUS, ASTEROID_MAX_RADIUS, ASTEROID_MAX_SPEED, ASTEROID_SPLIT_THRESHOLD } from "../core/constants.js";
+import { GREY, ASTEROIDS, PROJECTILES, MOUSE, KEYPRESS, ASTEROID_MIN_RADIUS, ASTEROID_MAX_RADIUS, ASTEROID_SPLIT_THRESHOLD } from "../core/constants.js";
 import { player, Projectile, Asteroid } from "../entities/entities.js";
 import { splitAsteroid } from "../entities/asteroids.js";
 import { POWERUPS } from "../entities/powerUps.js";
@@ -37,7 +37,8 @@ const XPORBS = [];
 const ORBIT_COOLDOWNS = [];
 const RL_SPEED_RAMP_RATE = 0.012;
 const RL_SPEED_RAMP_MAX = 2.2;
-const RL_MOVE_SPEED_FACTOR = 0.85; // ~6 px/frame vs single-player's 7 (MOVEMENT_SPEED).
+const RL_MOVE_SPEED_FACTOR = 0.65; // ~4.6 px/frame vs single-player's 7 (MOVEMENT_SPEED).
+const RL_ASTEROID_MAX_SPEED = 6;   // RL-only cap, slower than single-player's 15.
 
 const WORLD_SCREENS = 3;
 let WORLD_W = 0;
@@ -46,24 +47,28 @@ let camX = 0;
 let camY = 0;
 
 const STAGE_DURATION_MS = 240000;       // 4 min to boss
-const RL_SPAWN_INTERVAL_START = 2000;
-const RL_SPAWN_INTERVAL_END = 450;
-const RL_MAX_ASTEROIDS_START = 6;
-const RL_MAX_ASTEROIDS_END = 30;
+const RL_SPAWN_INTERVAL_START = 1500;
+const RL_SPAWN_INTERVAL_END = 330;
+const RL_MAX_ASTEROIDS_START = 7;
+const RL_MAX_ASTEROIDS_END = 38;
 
-// Enemy population caps (live count, not per-wave).
-const MAX_CHASERS = 6;
-const MAX_HUNTERS = 4;
+// Continuous enemy spawn cadence (ms between spawns) ramps with stage time.
+const RL_ENEMY_INTERVAL_START = 3850;
+const RL_ENEMY_INTERVAL_END = 1320;
+
+// Live-enemy caps ramp with stage progress t (0..1).
+function chaserCap(t) { return Math.round(_lerp(6, 13, t)); }
+function hunterCap(t) { return Math.round(_lerp(4, 8, t)); }
 
 // Discrete waves layered on top of the steady asteroid trickle. `at` is elapsed
 // stage time in ms (uses the pause-adjusted stageStartTime). Rocks here are a
 // surge that ignores the steady asteroid cap; enemy spawns respect the caps above.
 const WAVES = [
-  { at: 40000,  rocks: 8,  chasers: 0, hunters: 0, label: "WAVE 1" },
-  { at: 80000,  rocks: 6,  chasers: 4, hunters: 0, label: "WAVE 2" },
-  { at: 120000, rocks: 8,  chasers: 5, hunters: 0, label: "WAVE 3" },
-  { at: 160000, rocks: 4,  chasers: 3, hunters: 3, label: "WAVE 4" },
-  { at: 200000, rocks: 10, chasers: 5, hunters: 4, label: "WAVE 5" },
+  { at: 40000,  rocks: 18, chasers: 0, hunters: 0, label: "WAVE 1" },
+  { at: 80000,  rocks: 16, chasers: 4, hunters: 0, label: "WAVE 2", unlocks: "chaser" },
+  { at: 120000, rocks: 23, chasers: 5, hunters: 0, label: "WAVE 3" },
+  { at: 160000, rocks: 22, chasers: 3, hunters: 3, label: "WAVE 4", unlocks: "hunter" },
+  { at: 200000, rocks: 31, chasers: 5, hunters: 4, label: "WAVE 5" },
 ];
 
 function _lerp(a, b, t) { return a + (b - a) * t; }
@@ -244,7 +249,24 @@ function _spawnRLAsteroid() {
 
   const angle = Math.atan2(player.coordinates.y - y, player.coordinates.x - x) + (Math.random() - 0.5) * 0.8;
   const sizeFactor = Math.min(2.0, Math.max(0.7, 40 / radius));
-  const speed = Math.min(ASTEROID_MAX_SPEED, (1.8 + Math.random() * 1.6) * sizeFactor * rlState.speedRamp);
+  const speed = Math.min(RL_ASTEROID_MAX_SPEED, (1.8 + Math.random() * 1.6) * sizeFactor * rlState.speedRamp);
+  ASTEROIDS.push(new Asteroid({ coordinates: { x, y }, velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed }, radius }));
+}
+
+// Wave surge asteroid: spawned just off-screen at the given bearing from the
+// player and aimed back inward, so a wave converges from all directions at once.
+function _spawnWaveAsteroid(bearing) {
+  const radius = ASTEROID_MIN_RADIUS + Math.random() * (ASTEROID_MAX_RADIUS - ASTEROID_MIN_RADIUS);
+  const dist = Math.max(CANVAS.width, CANVAS.height) / 2 + radius + 40;
+
+  let x = player.coordinates.x + Math.cos(bearing) * dist;
+  let y = player.coordinates.y + Math.sin(bearing) * dist;
+  x = Math.max(radius, Math.min(WORLD_W - radius, x));
+  y = Math.max(radius, Math.min(WORLD_H - radius, y));
+
+  const angle = Math.atan2(player.coordinates.y - y, player.coordinates.x - x) + (Math.random() - 0.5) * 0.6;
+  const sizeFactor = Math.min(2.0, Math.max(0.7, 40 / radius));
+  const speed = Math.min(RL_ASTEROID_MAX_SPEED, (1.8 + Math.random() * 1.6) * sizeFactor * rlState.speedRamp);
   ASTEROIDS.push(new Asteroid({ coordinates: { x, y }, velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed }, radius }));
 }
 
@@ -350,21 +372,27 @@ function _rlDetectProjectileHits(now) {
 
       const shards = forkShotShards();
       const children = splitAsteroid(ast);
-      if (shards > 0) {
-        const angle = Math.atan2(ast.velocity.y, ast.velocity.x);
-        for (let s = 0; s < shards; s++) {
-          const a = angle + (Math.PI / 4) * (s % 2 === 0 ? 1 : -1) * Math.ceil((s + 1) / 2);
-          const spd = Math.min(ASTEROID_MAX_SPEED, 3.5 * rlState.speedRamp);
-          children.push(new Asteroid({
-            coordinates: { ...ast.coordinates },
-            velocity: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-            radius: Math.max(ASTEROID_MIN_RADIUS, ast.radius * 0.45),
-          }));
-        }
-      }
 
       ASTEROIDS.splice(j, 1);
       Array.prototype.push.apply(ASTEROIDS, children);
+
+      // Fork: fan extra shards outward from just beyond this asteroid's radius,
+      // so they clear the freshly-split children (which spawn at the same point)
+      // instead of insta-killing the new fragments, and fly on to hit other rocks.
+      if (shards > 0) {
+        const baseAngle = Math.atan2(proj.velocity.y, proj.velocity.x);
+        const shardRadius = 3 * bulletRadiusMult();
+        const offset = ast.radius + shardRadius + 8;
+        for (let s = 0; s < shards; s++) {
+          const a = baseAngle + (Math.PI / 4) * (s % 2 === 0 ? 1 : -1) * Math.ceil((s + 1) / 2);
+          const shard = new Projectile({
+            coordinates: { x: ast.coordinates.x + Math.cos(a) * offset, y: ast.coordinates.y + Math.sin(a) * offset },
+            velocity: { x: 26 * Math.cos(a), y: 26 * Math.sin(a) },
+          });
+          shard.radius = shardRadius;
+          PROJECTILES.push(shard);
+        }
+      }
 
       if (proj.piercing) {
         if (proj.pierceSplit && children.length === 0) {
@@ -522,18 +550,24 @@ function _playerTakeHit(now, fromCoords, fxRadius) {
 }
 
 // ── Wave scheduling ───────────────────────────────────────────────────────────
-function _fireWavesIfDue(now, elapsed) {
+function _fireWavesIfDue(now, elapsed, t) {
   if (rlState.nextWaveIndex >= WAVES.length) return;
   const w = WAVES[rlState.nextWaveIndex];
   if (elapsed < w.at) return;
   rlState.nextWaveIndex++;
 
-  for (let i = 0; i < w.rocks; i++) _spawnRLAsteroid();
-  for (let i = 0; i < w.chasers && countType("chaser") < MAX_CHASERS; i++) {
+  if (w.unlocks === "chaser") rlState.chaserUnlocked = true;
+  else if (w.unlocks === "hunter") rlState.hunterUnlocked = true;
+
+  for (let i = 0; i < w.rocks; i++) {
+    const bearing = (i / w.rocks) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    _spawnWaveAsteroid(bearing);
+  }
+  for (let i = 0; i < w.chasers && countType("chaser") < chaserCap(t); i++) {
     const p = _offCameraSpawnPoint(30);
     spawnChaser(p.x, p.y);
   }
-  for (let i = 0; i < w.hunters && countType("hunter") < MAX_HUNTERS; i++) {
+  for (let i = 0; i < w.hunters && countType("hunter") < hunterCap(t); i++) {
     const p = _offCameraSpawnPoint(30);
     spawnHunter(p.x, p.y, now);
   }
@@ -541,6 +575,24 @@ function _fireWavesIfDue(now, elapsed) {
   rlState.waveFlashUntil = now + 1800;
   rlState.waveFlashLabel = w.label;
   soundManager.playSound("ASTEROID_HIT", 0.2);
+}
+
+// ── Continuous enemy spawn (rising tide) ──────────────────────────────────────
+// Once a type is unlocked by its wave, keep it spawning up to a ramping cap.
+// Returns true if an enemy was spawned (so the caller consumes the timer).
+function _spawnEnemyTick(now, t) {
+  const chaserOK = rlState.chaserUnlocked && countType("chaser") < chaserCap(t);
+  const hunterOK = rlState.hunterUnlocked && countType("hunter") < hunterCap(t);
+  if (!chaserOK && !hunterOK) return false;
+
+  let type;
+  if (chaserOK && hunterOK) type = Math.random() < 0.6 ? "chaser" : "hunter";
+  else type = chaserOK ? "chaser" : "hunter";
+
+  const p = _offCameraSpawnPoint(30);
+  if (type === "chaser") spawnChaser(p.x, p.y);
+  else spawnHunter(p.x, p.y, now);
+  return true;
 }
 
 // ── Projectile-enemy collisions ───────────────────────────────────────────────
@@ -873,7 +925,11 @@ function _playingFrame(now, isBoss) {
     rlState.lastShotTime = now;
   }
 
-  _fireWavesIfDue(now, elapsed);
+  _fireWavesIfDue(now, elapsed, t);
+  const enemyInterval = _lerp(RL_ENEMY_INTERVAL_START, RL_ENEMY_INTERVAL_END, t);
+  if (now - rlState.lastEnemySpawnTime >= enemyInterval && _spawnEnemyTick(now, t)) {
+    rlState.lastEnemySpawnTime = now;
+  }
   updateEnemies(now, player.coordinates.x, player.coordinates.y, rlState.speedRamp, WORLD_W, WORLD_H);
   _rlDetectEnemyHits(now);
   if (_rlDetectEnemyPlayerHits(now)) { CONTEXT.restore(); return; }
