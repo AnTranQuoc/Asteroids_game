@@ -228,13 +228,13 @@ function _rlDetectProjectileHits(now) {
             }));
           }
         }
+        _checkLevelUp(now);
+        // Piercing bullet continues — don't break inner loop
       } else {
+        _checkLevelUp(now);
         PROJECTILES.splice(i, 1);
         break;
       }
-
-      _checkLevelUp(now);
-      break;
     }
   }
 }
