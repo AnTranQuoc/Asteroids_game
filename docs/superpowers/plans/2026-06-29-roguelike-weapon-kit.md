@@ -812,7 +812,7 @@ In the `mousedown` handler (~line 1026) change `_pickUpgrade(upgradeCards[i].id)
 
 - [ ] **Step 8: Update the upgrade overlay for 4 cards + new shape (`rlRender.js`)**
 
-In `rlRender.js`: remove the now-unused import `import { UPGRADE_POOL } from "./rlUpgrades.js";` (line 5). Add a `STAT` tier color:
+In `rlRender.js`: **leave** the `import { UPGRADE_POOL } from "./rlUpgrades.js";` (line 5) for now — `drawRLEnd` still uses it; it is removed in Task 9 once `drawRLEnd` is rewritten. Add a `STAT` tier color:
 
 ```js
 const TIER_COLORS = {
@@ -1308,13 +1308,53 @@ In `rlState.js` remove the upgrade machinery and effect scratch:
 
 (Keep `upgradesPickedCount` only if still referenced; if Step 1–7 removed its last writer `addUpgradeStack`, also delete the `upgradesPickedCount` field and its reset line.)
 
-- [ ] **Step 9: Delete the file**
+- [ ] **Step 9: Rewrite the end-screen upgrade chips (`rlRender.js`)**
+
+`drawRLEnd` shows "UPGRADES THIS RUN" chips by iterating `rlState.upgrades` + `UPGRADE_POOL`, both of which are being removed. Replace the chip loop (lines ~377–400, from `const TIER_CHIP_COLORS = …` through `CONTEXT.textBaseline = "alphabetic";`) with a version that reads the kit:
+
+```js
+  const TIER_CHIP_COLORS = { COMMON: "#7ef5aa", RARE: "#78c8ff", LEGENDARY: "#ffd750", STAT: "#c8aaff" };
+  let chipX = cx - 200;
+  let chipY = y;
+  CONTEXT.font = "11px monospace";
+  CONTEXT.textBaseline = "middle";
+  const chips = [
+    ...kitState.kit.map((e) => ({ label: `${WEAPONS[e.id].name} Lv${e.level}`, tier: WEAPONS[e.id].tier })),
+    ...kitState.passives.map((e) => ({ label: `${PASSIVES[e.id].name} Lv${e.level}`, tier: PASSIVES[e.id].tier })),
+  ];
+  for (const chip of chips) {
+    const w = CONTEXT.measureText(chip.label).width + 16;
+    if (chipX + w > cx + 200) { chipX = cx - 200; chipY += 28; }
+    CONTEXT.fillStyle = `rgba(255,255,255,0.05)`;
+    CONTEXT.strokeStyle = TIER_CHIP_COLORS[chip.tier];
+    CONTEXT.lineWidth = 1;
+    roundRect(chipX, chipY, w, 22, 4);
+    CONTEXT.fill();
+    CONTEXT.stroke();
+    CONTEXT.fillStyle = TIER_CHIP_COLORS[chip.tier];
+    CONTEXT.textAlign = "center";
+    CONTEXT.fillText(chip.label, chipX + w / 2, chipY + 11);
+    chipX += w + 8;
+  }
+  CONTEXT.textBaseline = "alphabetic";
+```
+
+`kitState` is already imported in `rlRender.js` (Task 2). Add the registry imports at the top of `rlRender.js` if not already present:
+
+```js
+import { WEAPONS } from "./rlWeapons.js";
+import { PASSIVES } from "./rlPassives.js";
+```
+
+Then remove the now-unused `import { UPGRADE_POOL } from "./rlUpgrades.js";` line (line 5).
+
+- [ ] **Step 10: Delete the file**
 
 ```bash
 git rm src/roguelike/rlUpgrades.js
 ```
 
-- [ ] **Step 10: Grep for leftovers**
+- [ ] **Step 11: Grep for leftovers**
 
 Run:
 
@@ -1324,7 +1364,7 @@ grep -rn "rlUpgrades\|getStackCount\|drawThreeCards\|ghostUntil\|ORBIT_COOLDOWNS
 
 Expected: **no matches**. Fix any that remain.
 
-- [ ] **Step 11: Full regression in browser**
+- [ ] **Step 12: Full regression in browser**
 
 Reload, play a full Level 1 run:
 - Ship fires Blaster from the start; 1 heart shown.
@@ -1334,7 +1374,7 @@ Reload, play a full Level 1 run:
 - Max HP → extra hearts; Armor → armor pips consumed before hearts; Shield → blocks a hit and recharges.
 - Reach the boss; defeat it → win screen. No console errors anywhere.
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add -A
