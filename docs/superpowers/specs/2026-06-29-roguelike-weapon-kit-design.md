@@ -32,18 +32,18 @@ Replace the upgrade pool with three upgradeable categories:
   **4** equipped, each levels **1→3**. Passives modify weapons/player via hooks,
   they do not fire.
 - **Stats** — player-body attributes: **MoveSpeed, Pickup, MaxHP, Armor**.
-  Drafted as cards in the same level-up draw, but surfaced only as a **fallback**
-  once weapons (then passives) are exhausted — see the draw-priority in §6.
-  MaxHP caps (1→2→3 hearts); the others stack freely so a valid card always
-  exists.
+  Ordinary draft cards mixed into the same level-up pool as weapons and passives;
+  any of them can appear in any draw (see §6). MaxHP caps (1→2→3 hearts); the
+  others stack freely.
 
 Evolutions / weapon-combo unlocks are explicitly **out of scope** (future
 update).
 
 Success criteria (verified in-browser):
 - Ship begins a run with 1 default weapon firing automatically and 1 heart.
-- On level-up: 4 cards are offered (weapons/passives, with stats as fallback);
-  picking a new weapon adds a second independently-firing stream.
+- On level-up: 4 cards are offered, mixing weapons/passives/stats, always with
+  ≥1 weapon card (unless all weapons maxed); picking a new weapon adds a second
+  independently-firing stream.
 - Two equipped weapons visibly fire on different cadences at once.
 - Equipping a passive (e.g. Pierce) changes the behavior of *all* equipped
   weapons' projectiles.
@@ -170,7 +170,7 @@ the passive's current level, and (for `onPlayerHit`) returns whether any absorbe
 | `phase` | brief invuln after a hit (from old `ghostShip`) | +duration; Lv3 deflects bullets |
 | `shield` | regenerating shield absorbs one hit before hearts | faster recharge per level |
 
-**Stats (4; drafted as fallback cards — see §6):**
+**Stats (4; ordinary draft cards — see §6):**
 
 | id | effect | cap |
 |----|--------|-----|
@@ -206,24 +206,28 @@ Replaces the current 1-hit-death + boolean shield model.
 `_checkLevelUp` (rl.js:751) keeps the XP-threshold logic and `onLevelUp` hook,
 then opens the pick screen:
 
-1. **Draw 4 distinct cards** via a fallback-priority pool so the draw is never
-   empty. An entry is *eligible* when it can still be taken: un-owned
-   weapons/passives only if their slot type has a free slot; owned
+1. **Draw 4 distinct cards** from one mixed pool of all eligible
+   weapons + passives + stats. An entry is *eligible* when it can still be taken:
+   un-owned weapons/passives only if their slot type has a free slot; owned
    weapons/passives only below `maxLevel`; stats only below their cap (maxHP) or
-   always (move/pickup/armor stack freely).
+   always (move/pickup/armor stack freely). Cards are weighted-random by `tier`,
+   no duplicate within a draw.
 
-   The pool is chosen by which categories still have eligible entries:
-   - **Weapons still available** → pool = eligible **weapons + passives**.
-     **Card 1 is reserved for the `blaster` upgrade** (always present unless
-     blaster is maxed; if maxed, this reservation drops and card 1 is a normal
-     draw). The other 3 are weighted-random distinct.
-   - **All weapons maxed / slots full** → pool = eligible **passives + stats**.
-   - **Weapons and passives all exhausted** → pool = **stats only**.
+   Two guardrails are applied **before** the random fill, so weapon progress is
+   never starved:
+   - **G1 — default-weapon card.** If `blaster` is below `maxLevel`, card 1 is
+     forced to the blaster upgrade.
+   - **G2 — at least one weapon card.** If G1 did not already place a weapon card
+     (i.e. blaster is maxed) and any other weapon is still eligible (a free
+     weapon slot for a new weapon, or an owned weapon below `maxLevel`), force
+     one random eligible **weapon** card into the draw.
+   - If **all weapons are maxed** (4 slots filled and each at `maxLevel`), neither
+     guardrail applies and all 4 cards are free random draws from passives +
+     stats.
 
-   Cards are weighted by `tier`; anti-repeat is by eligibility (a maxed or
-   slot-blocked item is simply not in the pool), not weight-decay. No duplicate
-   card within a draw. If fewer than 4 eligible entries exist in the chosen pool,
-   the draw shows however many remain (stats always backfill since they stack).
+   The remaining slots (after guardrails) are filled by weighted-random distinct
+   draws from the full eligible pool (weapons + passives + stats). Stats stack
+   freely, so a full 4-card draw is always possible.
 2. Player clicks a card → `addOrUpgradeWeapon` / `addOrUpgradePassive` /
    `applyStat`. There is **no separate stat-point currency or stat menu** —
    stats are ordinary cards.
