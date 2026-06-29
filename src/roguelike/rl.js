@@ -19,7 +19,7 @@ import { kitState, resetKit, tickKit, drawKit, runPassiveHook, maxHearts, weapon
 import { Boss } from "./rlBoss.js";
 import { ENEMIES, ENEMY_BULLETS, clearEnemies, countType, spawnChaser, spawnHunter, updateEnemies, drawEnemies } from "./rlEnemies.js";
 import {
-  drawXPStrip, drawLevelBadge, drawRLScore, drawBossHPBar,
+  drawXPStrip, drawLevelBadge, drawRLScore, drawBossHPBar, drawHearts,
   drawUpgradeOverlay, getUpgradeCardButtons,
   drawRLMenu, getRLMenuButtons,
   drawRLEnd, getRLEndButtons,
@@ -469,25 +469,8 @@ function _rlDetectPlayerHit(now) {
     const ast = ASTEROIDS[i];
     if (!_circleTriangleHit(ast, verts)) continue;
 
-    if (player.shield) {
-      player.shield = false;
-      player.invulnUntil = now + 1500;
-      _spawnExplosion(ast.coordinates, ast.radius);
-      ASTEROIDS.splice(i, 1);
-      soundManager.playSound("ASTEROID_HIT", 0.15);
-      if (shieldRechargeMs() < Infinity) {
-        rlState.shieldRechargeAt = now + shieldRechargeMs();
-      }
-    } else {
-      const ghostDur = ghostShipDurationMs();
-      if (ghostDur > 0 && now >= rlState.ghostCooldownUntil) {
-        rlState.ghostUntil = now + ghostDur;
-        rlState.ghostCooldownUntil = now + 20000;
-        soundManager.playSound("ASTEROID_HIT", 0.1);
-        return;
-      }
-      _triggerDeath(now);
-    }
+    ASTEROIDS.splice(i, 1);
+    _applyPlayerDamage(now, ast.coordinates, ast.radius);
     return;
   }
 }
@@ -538,48 +521,32 @@ function _rlDetectBossHits(now) {
 
   if (now < player.invulnUntil || now < rlState.ghostUntil) return;
   if (boss.collidesWithPlayer(player.coordinates.x, player.coordinates.y)) {
-    if (player.shield) {
-      player.shield = false;
-      player.invulnUntil = now + 1500;
-      if (shieldRechargeMs() < Infinity) rlState.shieldRechargeAt = now + shieldRechargeMs();
-      boss.bullets = boss.bullets.filter(
-        (b) => Math.hypot(b.x - player.coordinates.x, b.y - player.coordinates.y) >= 21
-      );
-    } else {
-      const ghostDur = ghostShipDurationMs();
-      if (ghostDur > 0 && now >= rlState.ghostCooldownUntil) {
-        rlState.ghostUntil = now + ghostDur;
-        rlState.ghostCooldownUntil = now + 20000;
-        boss.bullets = boss.bullets.filter(
-          (b) => Math.hypot(b.x - player.coordinates.x, b.y - player.coordinates.y) >= 21
-        );
-        return;
-      }
-      _triggerDeath(now);
-    }
+    _applyPlayerDamage(now, { x: player.coordinates.x, y: player.coordinates.y }, 24);
   }
 }
 
-// ── Player damage (shield pop / ghost phase / death) ──────────────────────────
-// Returns true if the run ended.
-function _playerTakeHit(now, fromCoords, fxRadius) {
-  if (player.shield) {
-    player.shield = false;
+// ── Player damage (passive absorb / armor / heart / death) ────────────────────
+// Apply one hit to the player: passives may absorb; else lose 1 armor, else 1
+// heart; 0 hearts ends the run. Grants i-frames. Returns true if run ended.
+function _applyPlayerDamage(now, fromCoords, fxRadius) {
+  if (runPassiveHook("onPlayerHit", _buildCtx(now))) {
     player.invulnUntil = now + 1500;
-    _spawnExplosion(fromCoords, fxRadius);
-    soundManager.playSound("ASTEROID_HIT", 0.15);
-    if (shieldRechargeMs() < Infinity) rlState.shieldRechargeAt = now + shieldRechargeMs();
-    return false;
-  }
-  const ghostDur = ghostShipDurationMs();
-  if (ghostDur > 0 && now >= rlState.ghostCooldownUntil) {
-    rlState.ghostUntil = now + ghostDur;
-    rlState.ghostCooldownUntil = now + 20000;
     soundManager.playSound("ASTEROID_HIT", 0.1);
     return false;
   }
-  _triggerDeath(now);
-  return true;
+  _spawnExplosion(fromCoords, fxRadius);
+  soundManager.playSound("ASTEROID_HIT", 0.15);
+  player.invulnUntil = now + 1500;
+  if (kitState.armor > 0) {
+    kitState.armor--;
+    return false;
+  }
+  kitState.hearts--;
+  if (kitState.hearts <= 0) {
+    _triggerDeath(now);
+    return true;
+  }
+  return false;
 }
 
 // ── Wave scheduling ───────────────────────────────────────────────────────────
@@ -659,7 +626,7 @@ function _rlDetectEnemyPlayerHits(now) {
     const e = ENEMIES[i];
     if (Math.hypot(e.x - player.coordinates.x, e.y - player.coordinates.y) < e.radius + 16) {
       if (e.type === "chaser") ENEMIES.splice(i, 1); // chaser detonates on impact
-      return _playerTakeHit(now, { x: e.x, y: e.y }, e.radius * 2);
+      return _applyPlayerDamage(now, { x: e.x, y: e.y }, e.radius * 2);
     }
   }
 
@@ -667,7 +634,7 @@ function _rlDetectEnemyPlayerHits(now) {
     const b = ENEMY_BULLETS[i];
     if (Math.hypot(b.x - player.coordinates.x, b.y - player.coordinates.y) < 16 + 4.5) {
       ENEMY_BULLETS.splice(i, 1);
-      return _playerTakeHit(now, { x: b.x, y: b.y }, 16);
+      return _applyPlayerDamage(now, { x: b.x, y: b.y }, 16);
     }
   }
 
@@ -993,6 +960,7 @@ function _playingFrame(now, isBoss) {
   drawXPStrip(isBoss);
   drawLevelBadge();
   drawRLScore();
+  drawHearts();
   if (!rlState.bossSpawned) drawBossCountdown((rlState.stageStartTime + STAGE_DURATION_MS) - now);
   _drawWaveFlash(now);
   if (isBoss && boss) drawBossHPBar(boss);

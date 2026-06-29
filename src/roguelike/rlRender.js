@@ -3,6 +3,7 @@ import { CANVAS, CONTEXT } from "../core/canvas.js";
 import { OFF_WHITE } from "../core/constants.js";
 import { rlState } from "./rlState.js";
 import { UPGRADE_POOL } from "./rlUpgrades.js";
+import { kitState, maxHearts } from "./rlKit.js";
 import { drawButton } from "../ui/ui.js";
 
 // ── XP strip (top edge, 5px tall) ────────────────────────────────────────────
@@ -46,6 +47,26 @@ export function drawRLScore() {
   CONTEXT.textBaseline = "top";
   CONTEXT.fillStyle = OFF_WHITE;
   CONTEXT.fillText(`SCORE  ${rlState.score}`, CANVAS.width / 2, 10);
+  CONTEXT.restore();
+}
+
+// ── Hearts + armor (top left) ────────────────────────────────────────────────
+export function drawHearts() {
+  const max = maxHearts();
+  const x0 = 16, y = 16, size = 22, gap = 6;
+  CONTEXT.save();
+  CONTEXT.font = `${size}px monospace`;
+  CONTEXT.textAlign = "left";
+  CONTEXT.textBaseline = "top";
+  for (let i = 0; i < max; i++) {
+    CONTEXT.fillStyle = i < kitState.hearts ? "#ff4d6d" : "rgba(255,77,109,0.22)";
+    CONTEXT.fillText("♥", x0 + i * (size + gap), y);
+  }
+  const ax = x0 + max * (size + gap) + 8;
+  for (let i = 0; i < kitState.armor; i++) {
+    CONTEXT.fillStyle = "#8fd3ff";
+    CONTEXT.fillText("◆", ax + i * (size + gap), y);
+  }
   CONTEXT.restore();
 }
 
