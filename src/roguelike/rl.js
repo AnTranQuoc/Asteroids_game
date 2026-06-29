@@ -115,13 +115,19 @@ function xpForRadius(r) {
 
 // ── XP orb pickups ────────────────────────────────────────────────────────────
 function _spawnXPOrb(coords, amount, now) {
-  XPORBS.push({ x: coords.x, y: coords.y, amount, spawnedAt: now });
+  const angle = Math.random() * Math.PI * 2;
+  const speed = 1.2 + Math.random() * 1.5;
+  XPORBS.push({
+    x: coords.x, y: coords.y,
+    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+    amount, spawnedAt: now,
+  });
 }
 
 function _updateXPOrbs(now) {
   const XP_ORB_LIFETIME = 10000;
   const pulls = magnetPullsXP();
-  const pickupR = 20 * magnetRadiusMult();
+  const pickupR = 14 * magnetRadiusMult();
 
   for (let i = XPORBS.length - 1; i >= 0; i--) {
     const orb = XPORBS[i];
@@ -136,11 +142,21 @@ function _updateXPOrbs(now) {
       const dx = player.coordinates.x - orb.x;
       const dy = player.coordinates.y - orb.y;
       const dist = Math.hypot(dx, dy) || 1;
-      orb.x += (dx / dist) * Math.min(8, 250 / dist);
-      orb.y += (dy / dist) * Math.min(8, 250 / dist);
+      orb.vx = (dx / dist) * Math.min(8, 280 / dist);
+      orb.vy = (dy / dist) * Math.min(8, 280 / dist);
     }
 
-    if (elapsed >= 100 && Math.hypot(player.coordinates.x - orb.x, player.coordinates.y - orb.y) < pickupR) {
+    orb.x += orb.vx;
+    orb.y += orb.vy;
+    // Gentle drag so orbs slow down and settle
+    if (!pulls) { orb.vx *= 0.96; orb.vy *= 0.96; }
+    // Canvas wrap
+    if (orb.x < 0) orb.x += CANVAS.width;
+    else if (orb.x > CANVAS.width) orb.x -= CANVAS.width;
+    if (orb.y < 0) orb.y += CANVAS.height;
+    else if (orb.y > CANVAS.height) orb.y -= CANVAS.height;
+
+    if (elapsed >= 150 && Math.hypot(player.coordinates.x - orb.x, player.coordinates.y - orb.y) < pickupR) {
       gainXP(orb.amount);
       XPORBS.splice(i, 1);
       _checkLevelUp(now);
@@ -148,12 +164,13 @@ function _updateXPOrbs(now) {
     }
 
     const alpha = elapsed > 8000 ? 1 - (elapsed - 8000) / 2000 : 1;
+    const pulse = 0.7 + 0.3 * Math.sin(elapsed * 0.006);
     CONTEXT.save();
     CONTEXT.beginPath();
-    CONTEXT.arc(orb.x, orb.y, 5, 0, Math.PI * 2);
-    CONTEXT.fillStyle = `rgba(120, 200, 255, ${alpha * 0.9})`;
+    CONTEXT.arc(orb.x, orb.y, 6, 0, Math.PI * 2);
+    CONTEXT.fillStyle = `rgba(120, 200, 255, ${alpha * pulse})`;
     CONTEXT.shadowColor = "#78c8ff";
-    CONTEXT.shadowBlur = 10;
+    CONTEXT.shadowBlur = 14;
     CONTEXT.fill();
     CONTEXT.restore();
   }
