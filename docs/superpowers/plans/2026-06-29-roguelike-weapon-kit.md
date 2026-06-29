@@ -196,7 +196,7 @@ export function tickKit(ctx, now) {
   for (const entry of kitState.kit) {
     const w = WEAPONS[entry.id];
     if (now - entry.lastFireAt >= w.cooldownMs(entry.level)) {
-      w.fire(ctx, entry.level);
+      w.fire(ctx, entry.level, entry);   // entry passed so weapons can keep per-weapon state on entry.runtime
       entry.lastFireAt = now;
     }
   }
@@ -1162,8 +1162,8 @@ Add to `WEAPONS`:
     maxLevel: 3,
     desc: (lvl) => `Proximity mines, ${60 + lvl * 25}px blast`,
     cooldownMs: () => 1500,
-    fire(ctx, lvl) {
-      const rt = ctx._mineEntry.runtime;
+    fire(ctx, lvl, entry) {
+      const rt = entry.runtime;
       if (!rt.mines) rt.mines = [];
       if (rt.mines.length >= 6) rt.mines.shift();
       rt.mines.push({
@@ -1175,7 +1175,6 @@ Add to `WEAPONS`:
     draw(ctx, entry, now) {
       const rt = entry.runtime;
       if (!rt.mines) rt.mines = [];
-      ctx._mineEntry = entry; // so fire() can reach this entry's runtime
       for (let i = rt.mines.length - 1; i >= 0; i--) {
         const m = rt.mines[i];
         const armed = now >= m.armAt;
@@ -1205,7 +1204,7 @@ Add to `WEAPONS`:
   },
 ```
 
-> Note: `fire()` runs from `tickKit` (no `entry` arg), so it reaches its runtime via `ctx._mineEntry`, which `draw()` sets each frame. `draw()` runs every frame for equipped weapons, so `_mineEntry` is always current before the next `fire()`.
+> Note: `tickKit` calls `w.fire(ctx, entry.level, entry)`, so `fire()` receives its own kit entry and reaches per-weapon state via `entry.runtime`. (`_buildCtx` returns a fresh `ctx` per call, so `tickKit` and `drawKit` do NOT share a `ctx` object — per-weapon state must live on `entry.runtime`, never on `ctx`.)
 
 - [ ] **Step 2: Verify in browser**
 

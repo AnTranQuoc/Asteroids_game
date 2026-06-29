@@ -127,4 +127,52 @@ export const WEAPONS = {
       soundManager.playSound("FIRE_SOUND", 0.12);
     },
   },
+
+  mines: {
+    id: "mines",
+    name: "Mines",
+    tier: "RARE",
+    maxLevel: 3,
+    desc: (lvl) => `Proximity mines, ${60 + lvl * 25}px blast`,
+    cooldownMs: () => 1500,
+    fire(ctx, lvl, entry) {
+      const rt = entry.runtime;
+      if (!rt.mines) rt.mines = [];
+      if (rt.mines.length >= 6) rt.mines.shift();
+      rt.mines.push({
+        x: ctx.player.coordinates.x, y: ctx.player.coordinates.y,
+        armAt: ctx.now + 600, blast: 60 + lvl * 25,
+      });
+      soundManager.playSound("FIRE_SOUND", 0.1);
+    },
+    draw(ctx, entry, now) {
+      const rt = entry.runtime;
+      if (!rt.mines) rt.mines = [];
+      for (let i = rt.mines.length - 1; i >= 0; i--) {
+        const m = rt.mines[i];
+        const armed = now >= m.armAt;
+        CONTEXT.save();
+        CONTEXT.beginPath();
+        CONTEXT.arc(m.x, m.y, 5, 0, Math.PI * 2);
+        CONTEXT.fillStyle = armed ? (Math.floor(now / 250) % 2 ? "#ff5050" : "#aa2222") : "rgba(255,120,120,0.4)";
+        CONTEXT.shadowColor = "#ff5050";
+        CONTEXT.shadowBlur = 8;
+        CONTEXT.fill();
+        CONTEXT.restore();
+        if (!armed) continue;
+        const near =
+          ctx.ASTEROIDS.some((a) => Math.hypot(a.coordinates.x - m.x, a.coordinates.y - m.y) < a.radius + 18) ||
+          ctx.ENEMIES.some((e) => Math.hypot(e.x - m.x, e.y - m.y) < e.radius + 18);
+        if (!near) continue;
+        ctx.spawnExplosion({ x: m.x, y: m.y }, m.blast);
+        for (const a of ctx.ASTEROIDS.slice()) {
+          if (Math.hypot(a.coordinates.x - m.x, a.coordinates.y - m.y) < m.blast) ctx.destroyAsteroid(a);
+        }
+        for (const e of ctx.ENEMIES.slice()) {
+          if (Math.hypot(e.x - m.x, e.y - m.y) < m.blast) ctx.damageEnemy(e, 3, { x: e.x, y: e.y });
+        }
+        rt.mines.splice(i, 1);
+      }
+    },
+  },
 };

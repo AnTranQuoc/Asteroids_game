@@ -52,7 +52,7 @@ export function tickKit(ctx, now) {
   for (const entry of kitState.kit) {
     const w = WEAPONS[entry.id];
     if (now - entry.lastFireAt >= w.cooldownMs(entry.level)) {
-      w.fire(ctx, entry.level);
+      w.fire(ctx, entry.level, entry);
       entry.lastFireAt = now;
     }
   }
