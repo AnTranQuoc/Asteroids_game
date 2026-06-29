@@ -49,6 +49,20 @@ export function drawRLScore() {
   CONTEXT.restore();
 }
 
+// ── Boss countdown (top centre, below score) ─────────────────────────────────
+export function drawBossCountdown(msRemaining) {
+  const secs = Math.max(0, Math.ceil(msRemaining / 1000));
+  const mm = Math.floor(secs / 60);
+  const ss = String(secs % 60).padStart(2, "0");
+  CONTEXT.save();
+  CONTEXT.font = "13px monospace";
+  CONTEXT.textAlign = "center";
+  CONTEXT.textBaseline = "top";
+  CONTEXT.fillStyle = secs <= 10 ? "#ff8050" : "rgba(255,255,255,0.7)";
+  CONTEXT.fillText(`BOSS IN ${mm}:${ss}`, CANVAS.width / 2, 32);
+  CONTEXT.restore();
+}
+
 // ── Boss HP bar (centred, below score) ───────────────────────────────────────
 export function drawBossHPBar(boss) {
   const barW = 260;
@@ -234,39 +248,65 @@ function wrapText(text, cx, y, maxW, lineH) {
   if (line) CONTEXT.fillText(line, cx, y);
 }
 
-// ── Menu screen ───────────────────────────────────────────────────────────────
+// ── Level-select screen ───────────────────────────────────────────────────────
+const LVL_CARD_W = 200;
+const LVL_CARD_H = 150;
+const LVL_CARD_GAP = 28;
+
 export function getRLMenuButtons() {
   const cx = CANVAS.width / 2;
   const cy = CANVAS.height / 2;
+  const totalW = LVL_CARD_W * 2 + LVL_CARD_GAP;
+  const startX = cx - totalW / 2;
+  const cardY = cy - LVL_CARD_H / 2;
   return [
-    { id: "rl-start", label: "START RUN", x: cx - 130, y: cy - 10, w: 260, h: 62 },
-    { id: "rl-back",  label: "BACK",      x: cx - 130, y: cy + 70, w: 260, h: 50 },
+    { id: "rl-level-1", label: "LEVEL 1", x: startX, y: cardY, w: LVL_CARD_W, h: LVL_CARD_H },
+    { id: "rl-back", label: "BACK", x: cx - 90, y: CANVAS.height - 96, w: 180, h: 48 },
   ];
 }
 
 export function drawRLMenu() {
   const cx = CANVAS.width / 2;
   const cy = CANVAS.height / 2;
+  const totalW = LVL_CARD_W * 2 + LVL_CARD_GAP;
+  const startX = cx - totalW / 2;
+  const cardY = cy - LVL_CARD_H / 2;
 
   CONTEXT.fillStyle = "rgb(16,16,16)";
   CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
 
   CONTEXT.save();
   CONTEXT.textAlign = "center";
-
-  CONTEXT.font = "bold 64px monospace";
+  CONTEXT.font = "bold 56px monospace";
   CONTEXT.fillStyle = OFF_WHITE;
-  CONTEXT.fillText("ROGUELIKE", cx, cy - 100);
-
-  CONTEXT.font = "15px monospace";
+  CONTEXT.fillText("ROGUELIKE", cx, cy - 150);
+  CONTEXT.font = "14px monospace";
   CONTEXT.fillStyle = "rgb(120,140,120)";
-  CONTEXT.fillText("Kill asteroids · Level up · Pick upgrades · Survive bosses", cx, cy - 56);
+  CONTEXT.fillText("Select a level", cx, cy - 110);
+  CONTEXT.restore();
+
+  const comingX = startX + LVL_CARD_W + LVL_CARD_GAP;
+  CONTEXT.save();
+  CONTEXT.fillStyle = "rgba(255,255,255,0.03)";
+  CONTEXT.strokeStyle = "rgba(160,160,175,0.25)";
+  CONTEXT.lineWidth = 1;
+  CONTEXT.setLineDash([6, 6]);
+  CONTEXT.beginPath();
+  CONTEXT.rect(comingX, cardY, LVL_CARD_W, LVL_CARD_H);
+  CONTEXT.fill();
+  CONTEXT.stroke();
+  CONTEXT.setLineDash([]);
+  CONTEXT.textAlign = "center";
+  CONTEXT.textBaseline = "middle";
+  CONTEXT.font = "16px monospace";
+  CONTEXT.fillStyle = "rgba(160,160,175,0.6)";
+  CONTEXT.fillText("COMING SOON", comingX + LVL_CARD_W / 2, cardY + LVL_CARD_H / 2);
   CONTEXT.restore();
 
   for (const btn of getRLMenuButtons()) {
     drawButton(btn, {
-      color: btn.id === "rl-start" ? "120, 230, 160" : "160, 160, 175",
-      font: btn.id === "rl-start" ? "24px monospace" : "20px monospace",
+      color: btn.id === "rl-level-1" ? "120, 230, 160" : "160, 160, 175",
+      font: btn.id === "rl-level-1" ? "22px monospace" : "18px monospace",
     });
   }
 }
@@ -360,6 +400,64 @@ export function drawRLEnd(bestScore, now) {
   CONTEXT.restore();
 
   for (const btn of getRLEndButtons()) {
+    drawButton(btn, {
+      color: btn.id === "rl-restart" ? "120, 230, 160" : "160, 160, 175",
+      font: "18px monospace",
+    });
+  }
+}
+
+// ── Win screen ────────────────────────────────────────────────────────────────
+export function getRLWinButtons() {
+  const cx = CANVAS.width / 2;
+  return [
+    { id: "rl-restart", label: "PLAY AGAIN", x: cx - 210, y: CANVAS.height - 110, w: 190, h: 54 },
+    { id: "rl-levels",  label: "LEVELS",     x: cx + 20,  y: CANVAS.height - 110, w: 190, h: 54 },
+  ];
+}
+
+export function drawRLWin(bestScore, now) {
+  const cx = CANVAS.width / 2;
+  const isNewBest = rlState.score > (bestScore || 0);
+
+  CONTEXT.fillStyle = "rgb(10,16,12)";
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+
+  CONTEXT.save();
+  CONTEXT.textAlign = "center";
+
+  CONTEXT.font = "bold 48px monospace";
+  CONTEXT.fillStyle = "#7ef5aa";
+  CONTEXT.shadowColor = "rgba(126,245,170,0.6)";
+  CONTEXT.shadowBlur = 22;
+  CONTEXT.fillText("VICTORY", cx, 110);
+  CONTEXT.shadowBlur = 0;
+
+  CONTEXT.font = "15px monospace";
+  CONTEXT.fillStyle = "rgb(150,180,150)";
+  CONTEXT.fillText("LEVEL 1 CLEARED", cx, 150);
+
+  const stats = [
+    ["SCORE",        `${rlState.score}${isNewBest ? "  ★ NEW BEST" : ""}`],
+    ["LEVEL",        String(rlState.level)],
+    ["ASTEROIDS",    String(rlState.asteroidsKilled)],
+    ["UPGRADES",     String(rlState.upgradesPickedCount)],
+    ["MONEY EARNED", `+$${Math.floor(rlState.score / 10)}`],
+  ];
+  CONTEXT.font = "15px monospace";
+  let y = 210;
+  for (const [label, value] of stats) {
+    CONTEXT.textAlign = "right";
+    CONTEXT.fillStyle = "#555";
+    CONTEXT.fillText(label, cx - 10, y);
+    CONTEXT.textAlign = "left";
+    CONTEXT.fillStyle = (label === "SCORE" && isNewBest) || label === "MONEY EARNED" ? "#ffd750" : OFF_WHITE;
+    CONTEXT.fillText(value, cx + 10, y);
+    y += 26;
+  }
+  CONTEXT.restore();
+
+  for (const btn of getRLWinButtons()) {
     drawButton(btn, {
       color: btn.id === "rl-restart" ? "120, 230, 160" : "160, 160, 175",
       font: "18px monospace",
