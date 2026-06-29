@@ -71,6 +71,36 @@ export function drawHearts() {
   CONTEXT.restore();
 }
 
+// ── Kit strip (top left, below hearts) ───────────────────────────────────────
+export function drawKitStrip() {
+  const rowH = 16;
+  const x = 16;
+  let y = 48;
+  CONTEXT.save();
+  CONTEXT.font = "11px monospace";
+  CONTEXT.textAlign = "left";
+  CONTEXT.textBaseline = "middle";
+
+  const rows = [
+    ...kitState.kit.map((e) => ({ name: WEAPONS[e.id].name, level: e.level, max: WEAPONS[e.id].maxLevel, color: "#7ef5aa" })),
+    ...kitState.passives.map((e) => ({ name: PASSIVES[e.id].name, level: e.level, max: PASSIVES[e.id].maxLevel, color: "#c8aaff" })),
+  ];
+
+  for (const r of rows) {
+    CONTEXT.fillStyle = r.color;
+    CONTEXT.fillText(r.name, x, y);
+    const px0 = x + 120;
+    for (let d = 0; d < r.max; d++) {
+      CONTEXT.beginPath();
+      CONTEXT.arc(px0 + d * 10, y, 3, 0, Math.PI * 2);
+      CONTEXT.fillStyle = d < r.level ? r.color : "rgba(255,255,255,0.15)";
+      CONTEXT.fill();
+    }
+    y += rowH;
+  }
+  CONTEXT.restore();
+}
+
 // ── Boss countdown (top centre, below score) ─────────────────────────────────
 export function drawBossCountdown(msRemaining) {
   const secs = Math.max(0, Math.ceil(msRemaining / 1000));

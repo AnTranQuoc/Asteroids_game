@@ -18,7 +18,7 @@ import { kitState, resetKit, tickKit, drawKit, runPassiveHook, maxHearts, weapon
 import { Boss } from "./rlBoss.js";
 import { ENEMIES, ENEMY_BULLETS, clearEnemies, countType, spawnChaser, spawnHunter, updateEnemies, drawEnemies } from "./rlEnemies.js";
 import {
-  drawXPStrip, drawLevelBadge, drawRLScore, drawBossHPBar, drawHearts,
+  drawXPStrip, drawLevelBadge, drawRLScore, drawBossHPBar, drawHearts, drawKitStrip,
   drawUpgradeOverlay, getUpgradeCardButtons,
   drawRLMenu, getRLMenuButtons,
   drawRLEnd, getRLEndButtons,
@@ -853,6 +853,7 @@ function _playingFrame(now, isBoss) {
   drawLevelBadge();
   drawRLScore();
   drawHearts();
+  drawKitStrip();
   if (!rlState.bossSpawned) drawBossCountdown((rlState.stageStartTime + STAGE_DURATION_MS) - now);
   _drawWaveFlash(now);
   if (isBoss && boss) drawBossHPBar(boss);
