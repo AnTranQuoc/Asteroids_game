@@ -15,6 +15,7 @@ import soundManager from "../audio/soundManager.js";
 
 import { rlState, resetRlState, xpRequired, gainXP, addScore, getStackCount, addUpgradeStack } from "./rlState.js";
 import { drawThreeCards, fireIntervalMs, moveSpeedMult, bulletRadiusMult, xpMultiplier, shieldRechargeMs, pierceStacks, ricochetBounces, forkShotShards, magnetRadiusMult, magnetPullsXP, orbitRingCount, orbitRingFastSpin, novaBurstStacks, ghostShipDurationMs } from "./rlUpgrades.js";
+import { kitState, resetKit, tickKit, drawKit, runPassiveHook, maxHearts, weaponLevel, passiveLevel } from "./rlKit.js";
 import { Boss } from "./rlBoss.js";
 import { ENEMIES, ENEMY_BULLETS, clearEnemies, countType, spawnChaser, spawnHunter, updateEnemies, drawEnemies } from "./rlEnemies.js";
 import {
@@ -112,6 +113,7 @@ function _clearRunState() {
 function startRun(now) {
   _clearRunState();
   resetRlState(now);
+  resetKit();
   runBanked = false;
   WORLD_W = CANVAS.width * WORLD_SCREENS;
   WORLD_H = CANVAS.height * WORLD_SCREENS;
@@ -284,24 +286,55 @@ function _rlUpdateAsteroid(a) {
   else if (a.coordinates.y > WORLD_H - r) { a.coordinates.y = WORLD_H - r; a.velocity.y = -Math.abs(a.velocity.y); }
 }
 
-// ── Projectile firing ─────────────────────────────────────────────────────────
-function _rlFireProjectile() {
-  soundManager.playSound("FIRE_SOUND", 0.1);
-  const baseRadius = 3 * bulletRadiusMult();
-  const spread = performance.now() < player.spreadUntil;
-  const offsets = spread ? [-0.18, 0, 0.18] : [0];
-  for (const off of offsets) {
-    const rot = player.rotation + off;
-    const p = new Projectile({
-      coordinates: { x: player.coordinates.x + Math.cos(rot) * 45, y: player.coordinates.y + Math.sin(rot) * 45 },
-      velocity: { x: 26 * Math.cos(rot), y: 26 * Math.sin(rot) },
-    });
-    p.radius = baseRadius;
-    p.bouncesLeft = ricochetBounces();
-    p.piercing = pierceStacks() > 0;
-    p.pierceSplit = pierceStacks() >= 2;
-    PROJECTILES.push(p);
+// ── Kit context bundle ────────────────────────────────────────────────────────
+function _buildCtx(now) {
+  return {
+    player, now,
+    PROJECTILES, ASTEROIDS, ENEMIES,
+    WORLD_W, WORLD_H,
+    stats: kitState.stats,
+    runPassiveHook,
+    spawnProjectile(x, y, vx, vy, radius) {
+      const p = new Projectile({ coordinates: { x, y }, velocity: { x: vx, y: vy } });
+      p.radius = radius;
+      runPassiveHook("onProjectileSpawn", p);
+      PROJECTILES.push(p);
+      return p;
+    },
+    spawnExplosion: (coords, radius) => _spawnExplosion(coords, radius),
+    destroyAsteroid: (ast) => _destroyAsteroid(ast, now),
+    damageEnemy: (e, dmg, coords) => _damageEnemy(e, dmg, coords, now),
+    spawnXPOrb: (coords, amount) => _spawnXPOrb(coords, amount, now),
+  };
+}
+
+function _destroyAsteroid(ast, now) {
+  const idx = ASTEROIDS.indexOf(ast);
+  if (idx === -1) return;
+  addScore(Math.round(15 * (1 - ast.radius / 450)));
+  _spawnXPOrb({ ...ast.coordinates }, xpForRadius(ast.radius), now);
+  rlState.asteroidsKilled++;
+  soundManager.playSound("ASTEROID_HIT", 0.1);
+  _spawnExplosion(ast.coordinates, ast.radius);
+  const children = splitAsteroid(ast);
+  ASTEROIDS.splice(idx, 1);
+  Array.prototype.push.apply(ASTEROIDS, children);
+  return children;
+}
+
+function _damageEnemy(e, dmg, coords, now) {
+  e.hp -= dmg;
+  soundManager.playSound("ASTEROID_HIT", 0.1);
+  if (e.hp <= 0) {
+    const isHunter = e.type === "hunter";
+    addScore(isHunter ? 40 : 25);
+    _spawnXPOrb({ x: e.x, y: e.y }, isHunter ? 20 : 12, now);
+    _spawnExplosion({ x: e.x, y: e.y }, e.radius * 2.2);
+    const j = ENEMIES.indexOf(e);
+    if (j !== -1) ENEMIES.splice(j, 1);
+    return true;
   }
+  return false;
 }
 
 // ── Projectile update (ricochet support) ──────────────────────────────────────
@@ -919,11 +952,7 @@ function _playingFrame(now, isBoss) {
   _rlUpdateProjectiles();
   _rlDetectProjectileHits(now);
 
-  const fireInterval = fireIntervalMs(220);
-  if (now - rlState.lastShotTime >= fireInterval) {
-    _rlFireProjectile();
-    rlState.lastShotTime = now;
-  }
+  tickKit(_buildCtx(now), now);
 
   _fireWavesIfDue(now, elapsed, t);
   const enemyInterval = _lerp(RL_ENEMY_INTERVAL_START, RL_ENEMY_INTERVAL_END, t);
