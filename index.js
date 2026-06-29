@@ -866,6 +866,7 @@ window.addEventListener("mousedown", (e) => {
 window.addEventListener("keydown", (e) => {
   if (dialogOpen()) return; // Let the modal dialog handle typing.
   if (brActive()) return; // Battle Royale handles its own keys.
+  if (rlActive()) return; // Roguelike handles its own keys.
 
   // Optional shortcut: pick difficulty with number keys on the menus.
   if (/^Digit[1-4]$/.test(e.code) && (!gameStarted || gameOver)) {
@@ -895,6 +896,7 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("keyup", (e) => {
   if (brActive()) return; // Battle Royale handles its own keys.
+  if (rlActive()) return; // Roguelike handles its own keys.
   if (gameStarted) {
     switch (e.code) {
       case "KeyW":

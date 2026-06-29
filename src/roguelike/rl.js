@@ -1,6 +1,6 @@
 // src/roguelike/rl.js
 import { CANVAS, CONTEXT } from "../core/canvas.js";
-import { GREY, ASTEROIDS, PROJECTILES, MOUSE, ASTEROID_MIN_RADIUS, ASTEROID_MAX_RADIUS, ASTEROID_MAX_SPEED, ASTEROID_SPLIT_THRESHOLD } from "../core/constants.js";
+import { GREY, ASTEROIDS, PROJECTILES, MOUSE, KEYPRESS, ASTEROID_MIN_RADIUS, ASTEROID_MAX_RADIUS, ASTEROID_MAX_SPEED, ASTEROID_SPLIT_THRESHOLD } from "../core/constants.js";
 import { player, Projectile, Asteroid } from "../entities/entities.js";
 import { splitAsteroid, getAsteroidSpawnData } from "../entities/asteroids.js";
 import { POWERUPS } from "../entities/powerUps.js";
@@ -627,7 +627,26 @@ window.addEventListener("mousedown", (e) => {
 
 window.addEventListener("keydown", (e) => {
   if (!open || dialogOpen()) return;
-  if (e.code === "Escape" && rlState.screen === "menu") {
+  if (e.code === "Escape") {
     closeRoguelike();
+    return;
+  }
+  if (rlState.screen === "playing" || rlState.screen === "boss" || rlState.screen === "upgrade-pick") {
+    switch (e.code) {
+      case "KeyW": KEYPRESS.w_key.pressed = true; break;
+      case "KeyA": KEYPRESS.a_key.pressed = true; break;
+      case "KeyS": KEYPRESS.s_key.pressed = true; break;
+      case "KeyD": KEYPRESS.d_key.pressed = true; break;
+    }
+  }
+});
+
+window.addEventListener("keyup", (e) => {
+  if (!open) return;
+  switch (e.code) {
+    case "KeyW": KEYPRESS.w_key.pressed = false; break;
+    case "KeyA": KEYPRESS.a_key.pressed = false; break;
+    case "KeyS": KEYPRESS.s_key.pressed = false; break;
+    case "KeyD": KEYPRESS.d_key.pressed = false; break;
   }
 });
