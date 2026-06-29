@@ -31,16 +31,18 @@ Replace the upgrade pool with three upgradeable categories:
 - **Passives** — unique behavioral effects (pierce, ricochet, phase, …). Up to
   **4** equipped, each levels **1→3**. Passives modify weapons/player via hooks,
   they do not fire.
-- **Stats** — player-body attributes: **MoveSpeed, Pickup, MaxHP, Armor**. Not
-  drafted as cards; a separate stat menu where the player spends **1 stat point
-  per level**.
+- **Stats** — player-body attributes: **MoveSpeed, Pickup, MaxHP, Armor**.
+  Drafted as cards in the same level-up draw, but surfaced only as a **fallback**
+  once weapons (then passives) are exhausted — see the draw-priority in §6.
+  MaxHP caps (1→2→3 hearts); the others stack freely so a valid card always
+  exists.
 
 Evolutions / weapon-combo unlocks are explicitly **out of scope** (future
 update).
 
 Success criteria (verified in-browser):
 - Ship begins a run with 1 default weapon firing automatically and 1 heart.
-- On level-up: 4 weapon/passive cards are offered AND 1 stat point can be spent;
+- On level-up: 4 cards are offered (weapons/passives, with stats as fallback);
   picking a new weapon adds a second independently-firing stream.
 - Two equipped weapons visibly fire on different cadences at once.
 - Equipping a passive (e.g. Pierce) changes the behavior of *all* equipped
@@ -101,9 +103,9 @@ armor  = 0            // current armor points; max = armor stat level
 weapons keep their own state without touching `rlState`.
 
 `rlKit.js` owns the helpers: `tickKit(ctx, now)`, `addOrUpgradeWeapon(id)`,
-`addOrUpgradePassive(id)`, `spendStatPoint(statId)`, `resetKit()`, plus the
-hook-dispatch helpers `runPassiveHook(name, ...args)` and the level/cap queries
-used by the draft.
+`addOrUpgradePassive(id)`, `applyStat(statId)`, `resetKit()`, plus the
+hook-dispatch helper `runPassiveHook(name, ...args)`, the `drawCards()`
+priority logic (§6), and the level/cap/eligibility queries it needs.
 
 ### 2. Firing — `tickKit`
 
@@ -168,7 +170,7 @@ the passive's current level, and (for `onPlayerHit`) returns whether any absorbe
 | `phase` | brief invuln after a hit (from old `ghostShip`) | +duration; Lv3 deflects bullets |
 | `shield` | regenerating shield absorbs one hit before hearts | faster recharge per level |
 
-**Stats (4; stat menu):**
+**Stats (4; drafted as fallback cards — see §6):**
 
 | id | effect | cap |
 |----|--------|-----|
@@ -204,24 +206,28 @@ Replaces the current 1-hit-death + boolean shield model.
 `_checkLevelUp` (rl.js:751) keeps the XP-threshold logic and `onLevelUp` hook,
 then opens the pick screen:
 
-1. **Draw 4 cards** from the combined weapon+passive pool.
-   - **Card 1 is reserved for the default weapon (`blaster`) upgrade** and is
-     always present *unless blaster is already at `maxLevel`*, in which case that
-     slot falls back to a normal random draw.
-   - The remaining 3 cards are weighted-random distinct draws from the eligible
-     pool. Eligible entries:
-     - un-owned weapons (only if a weapon slot is free), un-owned passives (if a
-       passive slot is free),
-     - owned weapons/passives currently below `maxLevel` (offered as an upgrade).
-   Weighted by `tier`; anti-repeat handled by eligibility (a maxed or
-   slot-blocked item is simply not eligible) rather than the old weight-decay.
-   No duplicate cards within a single draw (the reserved blaster card is excluded
-   from the other 3).
-2. Player clicks a card → `addOrUpgradeWeapon` / `addOrUpgradePassive`.
-3. **+1 stat point.** A stat row on the same screen shows the 4 stats with their
-   levels; clicking one calls `spendStatPoint`. A maxed stat (maxHP at 2) is
-   disabled. Points are spent immediately (not banked).
-4. Resume play (stage timer un-paused exactly as today via `pauseStartedAt`).
+1. **Draw 4 distinct cards** via a fallback-priority pool so the draw is never
+   empty. An entry is *eligible* when it can still be taken: un-owned
+   weapons/passives only if their slot type has a free slot; owned
+   weapons/passives only below `maxLevel`; stats only below their cap (maxHP) or
+   always (move/pickup/armor stack freely).
+
+   The pool is chosen by which categories still have eligible entries:
+   - **Weapons still available** → pool = eligible **weapons + passives**.
+     **Card 1 is reserved for the `blaster` upgrade** (always present unless
+     blaster is maxed; if maxed, this reservation drops and card 1 is a normal
+     draw). The other 3 are weighted-random distinct.
+   - **All weapons maxed / slots full** → pool = eligible **passives + stats**.
+   - **Weapons and passives all exhausted** → pool = **stats only**.
+
+   Cards are weighted by `tier`; anti-repeat is by eligibility (a maxed or
+   slot-blocked item is simply not in the pool), not weight-decay. No duplicate
+   card within a draw. If fewer than 4 eligible entries exist in the chosen pool,
+   the draw shows however many remain (stats always backfill since they stack).
+2. Player clicks a card → `addOrUpgradeWeapon` / `addOrUpgradePassive` /
+   `applyStat`. There is **no separate stat-point currency or stat menu** —
+   stats are ordinary cards.
+3. Resume play (stage timer un-paused exactly as today via `pauseStartedAt`).
 
 ### 7. Render / HUD — `rlRender.js`
 
@@ -229,8 +235,8 @@ then opens the pick screen:
   hearts (depleted first).
 - **Kit strip:** weapon icons with level pips (1–3); passive icons with level
   pips.
-- **Upgrade screen:** the 3 cards (name, level "Lv2→Lv3" or "NEW", short desc)
-  plus the stat-spend row.
+- **Upgrade screen:** the 4 cards (name, level "Lv2→Lv3" or "NEW", short desc).
+  Stat cards render in the same card layout (no separate stat row).
 - Weapons with persistent visuals (orbit blades, mines) draw via their optional
   `draw(ctx, entry)` called from a single kit-draw pass, so rl.js no longer needs
   per-effect draw calls like `_drawOrbitRing`.
