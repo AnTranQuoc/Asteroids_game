@@ -149,6 +149,17 @@ function _rlUpdateProjectiles() {
   for (let i = PROJECTILES.length - 1; i >= 0; i--) {
     const p = PROJECTILES[i];
     p.drawProjectile();
+    // Heavy Shot: draw a glow halo proportional to the enlarged radius
+    if (p.radius > 3.5) {
+      CONTEXT.save();
+      CONTEXT.beginPath();
+      CONTEXT.arc(p.coordinates.x, p.coordinates.y, p.radius, 0, Math.PI * 2);
+      CONTEXT.fillStyle = "rgba(255, 160, 40, 0.35)";
+      CONTEXT.shadowColor = "#ff8822";
+      CONTEXT.shadowBlur = p.radius * 3;
+      CONTEXT.fill();
+      CONTEXT.restore();
+    }
     p.coordinates.x += p.velocity.x;
     p.coordinates.y += p.velocity.y;
     p.distanceTraveled = (p.distanceTraveled || 0) + Math.hypot(p.velocity.x, p.velocity.y);
@@ -200,7 +211,7 @@ function _rlDetectProjectileHits(now) {
 
       const shards = forkShotShards();
       const children = splitAsteroid(ast);
-      if (shards > 0 && ast.radius > ASTEROID_SPLIT_THRESHOLD) {
+      if (shards > 0) {
         const angle = Math.atan2(ast.velocity.y, ast.velocity.x);
         for (let s = 0; s < shards; s++) {
           const a = angle + (Math.PI / 4) * (s % 2 === 0 ? 1 : -1) * Math.ceil((s + 1) / 2);
@@ -208,7 +219,7 @@ function _rlDetectProjectileHits(now) {
           children.push(new Asteroid({
             coordinates: { ...ast.coordinates },
             velocity: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-            radius: ast.radius * 0.45,
+            radius: Math.max(ASTEROID_MIN_RADIUS, ast.radius * 0.45),
           }));
         }
       }
