@@ -140,7 +140,7 @@ function _updateXPOrbs(now) {
       orb.y += (dy / dist) * Math.min(8, 250 / dist);
     }
 
-    if (Math.hypot(player.coordinates.x - orb.x, player.coordinates.y - orb.y) < pickupR) {
+    if (elapsed >= 100 && Math.hypot(player.coordinates.x - orb.x, player.coordinates.y - orb.y) < pickupR) {
       gainXP(orb.amount);
       XPORBS.splice(i, 1);
       _checkLevelUp(now);
