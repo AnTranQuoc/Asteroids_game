@@ -130,7 +130,6 @@ export function drawBossHPBar(boss) {
   CONTEXT.textAlign = "center";
   CONTEXT.textBaseline = "bottom";
   CONTEXT.fillStyle = "#ff5050";
-  CONTEXT.letterSpacing = "2px";
   CONTEXT.fillText(`BOSS #${boss.index}  ${boss.shielded ? "SHIELDED" : "EXPOSED"}`, CANVAS.width / 2, by - 2);
 
   // Track
