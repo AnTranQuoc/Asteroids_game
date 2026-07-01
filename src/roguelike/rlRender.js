@@ -230,9 +230,8 @@ export function drawUpgradeOverlay(cards, hoveredIndex) {
     CONTEXT.textAlign = "center";
     CONTEXT.textBaseline = "top";
     CONTEXT.fillStyle = `rgba(${accent}, 0.8)`;
-    CONTEXT.letterSpacing = "2px";
     CONTEXT.fillText(
-      card.isUpgrade ? `${card.tier} · UPGRADE` : card.tier,
+      card.isUpgrade ? `${card.tier}  ·  UPGRADE` : card.tier,
       btn.x + btn.w / 2, btn.y + 10
     );
 
