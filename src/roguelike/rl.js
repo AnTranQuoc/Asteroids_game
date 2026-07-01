@@ -93,6 +93,19 @@ function closeRoguelike() {
   open = false;
   rlState.screen = "menu";
   _clearRunState();
+
+  // Restore shared player state so other modes (single-player) start clean.
+  player.coordinates.x = CANVAS.width / 2;
+  player.coordinates.y = CANVAS.height / 2;
+  player.velocity.x = 0;
+  player.velocity.y = 0;
+  player.rapidFireUntil = 0;
+  player.spreadUntil = 0;
+  player.shield = false;
+  player.invulnUntil = 0;
+  player.shieldRechargeAt = 0;
+  player.phaseUntil = 0;
+  player.phaseCooldownUntil = 0;
 }
 
 function _clearRunState() {
