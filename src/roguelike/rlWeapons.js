@@ -61,7 +61,8 @@ export const WEAPONS = {
           CONTEXT.restore();
         }
         if (onCd) continue;
-        for (const ast of ctx.ASTEROIDS.slice()) {
+        for (let ai = ctx.ASTEROIDS.length - 1; ai >= 0; ai--) {
+          const ast = ctx.ASTEROIDS[ai];
           if (Math.hypot(ox - ast.coordinates.x, oy - ast.coordinates.y) < orbR + ast.radius) {
             ctx.destroyAsteroid(ast);
             rt.cd[i] = now + 1200;
@@ -69,7 +70,8 @@ export const WEAPONS = {
           }
         }
         if (now < (rt.cd[i] || 0)) continue;
-        for (const e of ctx.ENEMIES.slice()) {
+        for (let ei = ctx.ENEMIES.length - 1; ei >= 0; ei--) {
+          const e = ctx.ENEMIES[ei];
           if (Math.hypot(ox - e.x, oy - e.y) < orbR + e.radius) {
             ctx.damageEnemy(e, 1, { x: e.x, y: e.y });
             rt.cd[i] = now + 1200;
