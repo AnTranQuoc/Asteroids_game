@@ -4,7 +4,7 @@ export const rlState = {
   screen: "menu",       // menu | playing | upgrade-pick | boss | end
   xp: 0,
   level: 0,
-  xpRequired: 200,
+  xpRequired: xpRequired(0),
   score: 0,
   bossIndex: 0,
   bossesDefeated: 0,
