@@ -76,18 +76,20 @@ class Player {
       const cos = Math.cos(this.rotation);
       const sin = Math.sin(this.rotation);
   
+      // Collision triangle kept a touch inside the visual hull (nose ~30, wings
+      // ±15) so grazes that look like misses don't register as hits.
       return [
         {
-          x: this.coordinates.x + cos * 30 - sin * 0,
-          y: this.coordinates.y + sin * 30 + cos * 0,
+          x: this.coordinates.x + cos * 24 - sin * 0,
+          y: this.coordinates.y + sin * 24 + cos * 0,
         },
         {
-          x: this.coordinates.x + cos * -10 - sin * 10,
-          y: this.coordinates.y + sin * -10 + cos * 10,
+          x: this.coordinates.x + cos * -6 - sin * 9,
+          y: this.coordinates.y + sin * -6 + cos * 9,
         },
         {
-          x: this.coordinates.x + cos * -10 - sin * -10,
-          y: this.coordinates.y + sin * -10 + cos * -10,
+          x: this.coordinates.x + cos * -6 - sin * -9,
+          y: this.coordinates.y + sin * -6 + cos * -9,
         },
       ];
     }
